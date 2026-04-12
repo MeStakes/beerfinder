@@ -14,7 +14,7 @@ from database import init_db, get_cached_offers, save_offers, get_cache_info
 from scraper import scrape_all
 
 # Stato scraping in corso per zona
-_scraping_zones: set[str] = set()
+_scraping_zones: set = set()
 
 
 @asynccontextmanager

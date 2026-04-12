@@ -7,6 +7,7 @@ import asyncio
 import re
 import random
 import time
+from typing import Optional
 from bs4 import BeautifulSoup
 from database import log_scrape
 
@@ -67,7 +68,7 @@ def is_beer(text: str) -> bool:
     return any(kw in text_lower for kw in BEER_KEYWORDS)
 
 
-def extract_price(text: str) -> float | None:
+def extract_price(text: str) -> Optional[float]:
     match = re.search(r"(\d+[,\.]\d{2})", text)
     if match:
         return float(match.group(1).replace(",", "."))

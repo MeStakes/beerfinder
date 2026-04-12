@@ -5,6 +5,7 @@ import aiosqlite
 import json
 import time
 from pathlib import Path
+from typing import Optional
 
 DB_PATH = Path("beer_finder.db")
 TTL_SECONDS = 86400  # 24 ore
@@ -34,7 +35,7 @@ async def init_db():
         await db.commit()
 
 
-async def get_cached_offers(zone: str) -> list | None:
+async def get_cached_offers(zone: str) -> Optional[list]:
     """Restituisce offerte in cache se non scadute, altrimenti None."""
     now = time.time()
     async with aiosqlite.connect(DB_PATH) as db:
