@@ -51,7 +51,7 @@ USER_AGENTS = [
 HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
-    "Accept-Encoding": "gzip, deflate, br",
+    # Accept-Encoding omesso: httpx non decomprime automaticamente se impostato manualmente
     "Connection": "keep-alive",
     "DNT": "1",
 }
@@ -96,92 +96,99 @@ def calc_discount(original: float, sale: float) -> int:
 # SORGENTE 1: promoqui.it
 # ============================================================
 async def scrape_promoqui(client: httpx.AsyncClient, zone: str) -> list:
+    """Scrapa offerte birra da promoqui.it (risultati nazionali)."""
     offers = []
-    urls = [
-        f"https://www.promoqui.it/cerca/birra/?zona={zone}",
-        f"https://www.promoqui.it/cerca/birre/?zona={zone}",
-    ]
-    for url in urls:
-        try:
-            resp = await client.get(url, headers=get_headers(), timeout=15, follow_redirects=True)
-            if resp.status_code != 200:
+    url = "https://www.promoqui.it/offerte/birra/"
+    try:
+        resp = await client.get(url, headers=get_headers(), timeout=20, follow_redirects=True)
+        if resp.status_code != 200:
+            await log_scrape(zone, "promoqui", "error", 0, f"HTTP {resp.status_code}")
+            return []
+
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        # Trova le card offerta: usa find_all con filtro classe (più affidabile di select CSS)
+        def has_offer_root(tag):
+            return tag.name and any(
+                "OffersList_offer__" in c and "image" not in c and "information" not in c
+                and "title" not in c and "text" not in c
+                for c in tag.get("class", [])
+            ) and tag.find("img")  # solo card con immagine (esclude wrapper vuoti)
+
+        cards = soup.find_all(has_offer_root)
+
+        for card in cards:
+            # Titolo
+            title_el = card.find(lambda t: t.name and any("__title" in c for c in t.get("class", [])))
+            if not title_el:
                 continue
-            soup = BeautifulSoup(resp.text, "lxml")
+            title = title_el.get_text(strip=True)
 
-            # Selettori offer cards promoqui
-            cards = soup.select(".offer-card, .product-card, article.offer, .offerta-item, [data-offer-id]")
-            if not cards:
-                cards = soup.select("article, .card, .item")
+            # Immagine
+            img_el = card.find("img", src=True)
+            img_url = img_el["src"] if img_el else ""
 
-            for card in cards:
-                title = ""
-                for sel in [".offer-title", ".product-name", "h2", "h3", ".title", ".name"]:
-                    el = card.select_one(sel)
-                    if el:
-                        title = el.get_text(strip=True)
-                        break
+            # Link al volantino (primo link della card)
+            link_el = card.find("a", href=True)
+            link_url = ""
+            if link_el:
+                href = link_el["href"]
+                link_url = href if href.startswith("http") else f"https://www.promoqui.it{href}"
 
-                if not title or not is_beer(title):
-                    continue
+            # Prezzo: cerchiamo il div PriceLabel e prendiamo il suo testo grezzo
+            price_label = card.find(lambda t: t.name and any("PriceLabel_price-label__" in c for c in t.get("class", [])))
+            sale_price = None
+            if price_label:
+                # Il testo del div è tipo "0.99€" — estraiamo il numero
+                m = re.search(r"(\d+[,\.]\d+)", price_label.get_text(strip=True))
+                if m:
+                    try:
+                        sale_price = float(m.group(1).replace(",", "."))
+                    except ValueError:
+                        pass
 
-                # Prezzi
-                price_text = card.get_text(" ", strip=True)
-                prices = re.findall(r"(\d+[,\.]\d{2})\s*€?", price_text)
-                price_vals = sorted([float(p.replace(",", ".")) for p in prices if 0.5 < float(p.replace(",", ".")) < 100])
+            if not sale_price:
+                continue
 
-                sale_price = price_vals[0] if price_vals else None
-                orig_price = price_vals[1] if len(price_vals) > 1 else None
+            # Percentuale sconto
+            discount_el = card.find(lambda t: t.name and any("__discount" in c for c in t.get("class", [])))
+            discount_pct = 0
+            if discount_el:
+                m = re.search(r"(\d+)", discount_el.get_text(strip=True))
+                if m:
+                    discount_pct = int(m.group(1))
 
-                # Supermercato
-                supermarket = ""
-                for sel in [".store-name", ".supermarket", ".market-name", ".brand"]:
-                    el = card.select_one(sel)
-                    if el:
-                        supermarket = el.get_text(strip=True)
-                        break
+            # Prezzo originale calcolato dallo sconto
+            original_price = None
+            if discount_pct > 0:
+                original_price = round(sale_price / (1 - discount_pct / 100), 2)
 
-                # Immagine
-                img = card.select_one("img")
-                img_url = img.get("src", "") or img.get("data-src", "") if img else ""
+            # Supermercato
+            retailer_el = card.find(lambda t: t.name and any("__retailer" in c for c in t.get("class", [])))
+            supermarket = retailer_el.get_text(strip=True) if retailer_el else "Supermercato"
 
-                # Validità
-                validity = ""
-                for sel in [".validity", ".date", ".scadenza", ".valid"]:
-                    el = card.select_one(sel)
-                    if el:
-                        validity = el.get_text(strip=True)
-                        break
+            offers.append({
+                "id": f"promoqui_{hash(title + supermarket)}",
+                "name": title,
+                "supermarket": supermarket,
+                "supermarket_meta": get_supermarket_meta(supermarket),
+                "sale_price": sale_price,
+                "original_price": original_price,
+                "discount_pct": discount_pct,
+                "on_sale": discount_pct > 0,
+                "image_url": img_url,
+                "validity": "",
+                "link_url": link_url,
+                "source": "promoqui.it",
+                "zone": zone,
+            })
 
-                # Link alla pagina dell'offerta
-                link_el = card.select_one("a[href]")
-                link_url = ""
-                if link_el:
-                    href = link_el.get("href", "")
-                    link_url = href if href.startswith("http") else f"https://www.promoqui.it{href}"
+        await log_scrape(zone, "promoqui", "ok", len(offers))
 
-                if sale_price:
-                    offers.append({
-                        "id": f"promoqui_{hash(title + supermarket)}",
-                        "name": title,
-                        "supermarket": supermarket or "Supermercato",
-                        "supermarket_meta": get_supermarket_meta(supermarket),
-                        "sale_price": sale_price,
-                        "original_price": orig_price,
-                        "discount_pct": calc_discount(orig_price, sale_price),
-                        "on_sale": bool(orig_price and orig_price > sale_price),
-                        "image_url": img_url,
-                        "validity": validity,
-                        "link_url": link_url,
-                        "source": "promoqui.it",
-                        "zone": zone,
-                    })
+    except Exception as e:
+        await log_scrape(zone, "promoqui", "error", 0, str(e))
 
-            await asyncio.sleep(random.uniform(1, 2))
-
-        except Exception as e:
-            await log_scrape(zone, "promoqui", "error", 0, str(e))
-
-    await log_scrape(zone, "promoqui", "ok", len(offers))
+    return offers
     return offers
 
 
