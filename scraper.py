@@ -152,6 +152,13 @@ async def scrape_promoqui(client: httpx.AsyncClient, zone: str) -> list:
                         validity = el.get_text(strip=True)
                         break
 
+                # Link alla pagina dell'offerta
+                link_el = card.select_one("a[href]")
+                link_url = ""
+                if link_el:
+                    href = link_el.get("href", "")
+                    link_url = href if href.startswith("http") else f"https://www.promoqui.it{href}"
+
                 if sale_price:
                     offers.append({
                         "id": f"promoqui_{hash(title + supermarket)}",
@@ -164,6 +171,7 @@ async def scrape_promoqui(client: httpx.AsyncClient, zone: str) -> list:
                         "on_sale": bool(orig_price and orig_price > sale_price),
                         "image_url": img_url,
                         "validity": validity,
+                        "link_url": link_url,
                         "source": "promoqui.it",
                         "zone": zone,
                     })
@@ -212,6 +220,12 @@ async def scrape_volantino(client: httpx.AsyncClient, zone: str) -> list:
             img = card.select_one("img")
             img_url = img.get("src", "") or img.get("data-src", "") if img else ""
 
+            link_el = card.select_one("a[href]")
+            link_url = ""
+            if link_el:
+                href = link_el.get("href", "")
+                link_url = href if href.startswith("http") else f"https://www.volantino.it{href}"
+
             if sale_price:
                 offers.append({
                     "id": f"volantino_{hash(title + supermarket)}",
@@ -224,6 +238,7 @@ async def scrape_volantino(client: httpx.AsyncClient, zone: str) -> list:
                     "on_sale": bool(orig_price and orig_price > sale_price),
                     "image_url": img_url,
                     "validity": "",
+                    "link_url": link_url,
                     "source": "volantino.it",
                     "zone": zone,
                 })
@@ -271,6 +286,12 @@ async def scrape_offerte(client: httpx.AsyncClient, zone: str) -> list:
             img = card.select_one("img")
             img_url = img.get("src", "") or img.get("data-src", "") if img else ""
 
+            link_el = card.select_one("a[href]")
+            link_url = ""
+            if link_el:
+                href = link_el.get("href", "")
+                link_url = href if href.startswith("http") else f"https://www.offerte.it{href}"
+
             if sale_price:
                 offers.append({
                     "id": f"offerte_{hash(title + supermarket)}",
@@ -283,6 +304,7 @@ async def scrape_offerte(client: httpx.AsyncClient, zone: str) -> list:
                     "on_sale": bool(orig_price and orig_price > sale_price),
                     "image_url": img_url,
                     "validity": "",
+                    "link_url": link_url,
                     "source": "offerte.it",
                     "zone": zone,
                 })
@@ -334,6 +356,7 @@ def get_demo_data(zone: str) -> list:
             "on_sale": b["on_sale"],
             "image_url": "",
             "validity": "Fino a domenica",
+            "link_url": "",
             "source": "demo",
             "zone": zone,
         })

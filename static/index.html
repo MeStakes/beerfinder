@@ -378,6 +378,17 @@
     margin-top:4px;
   }
 
+  .volantino-link {
+    display:block; margin-top:10px;
+    text-align:center; font-size:0.8rem; font-weight:600;
+    color:var(--amber); text-decoration:none;
+    border:1px solid rgba(245,158,11,0.35); border-radius:8px;
+    padding:6px 0; transition:background var(--transition), color var(--transition);
+  }
+  .volantino-link:hover {
+    background:var(--amber-glow); color:var(--amber);
+  }
+
   .validity-text {
     font-size:0.75rem; color:var(--text-dim);
     display:flex; align-items:center; gap:4px;
@@ -928,6 +939,7 @@ function beerCard(o, idx) {
       ${validity}
       <span class="source-tag">${esc(o.source)}</span>
     </div>
+    ${o.link_url ? `<a class="volantino-link" href="${esc(o.link_url)}" target="_blank" rel="noopener noreferrer">Vedi offerta →</a>` : ''}
   </div>
 </div>`;
 }
