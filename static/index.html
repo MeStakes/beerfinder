@@ -80,9 +80,9 @@
     text-transform: uppercase;
   }
 
-  /* ── SEARCH BAR ── */
+  /* ── SEARCH BAR (rimossa — zona fissa: Modena) ── */
   .search-section {
-    padding: 40px 24px 0;
+    display: none;
     max-width: 720px;
     margin: 0 auto;
   }
@@ -543,28 +543,10 @@
   <header style="position:relative; overflow:hidden;">
     <div class="hero-glow"></div>
     <div class="logo">🍺 BeerFinder</div>
-    <p class="logo-sub">Offerte birra in tempo reale · tutti i supermercati</p>
+    <p class="logo-sub">Offerte birra in tempo reale · supermercati di Modena</p>
   </header>
 
-  <!-- SEARCH -->
-  <div class="search-section">
-    <label class="search-label" for="zone-input">📍 Inserisci la tua città o CAP</label>
-    <div class="search-row">
-      <div class="search-input-wrap">
-        <span class="search-icon">🏙️</span>
-        <input
-          type="text"
-          id="zone-input"
-          placeholder="es. Milano, Roma, 20121..."
-          autocomplete="off"
-          spellcheck="false"
-        />
-      </div>
-      <button class="search-btn" id="search-btn" onclick="doSearch()">
-        <span id="search-btn-text">Cerca offerte</span>
-      </button>
-    </div>
-  </div>
+  <!-- Zona fissa: Modena -->
 
   <!-- SCRAPING BANNER -->
   <div class="scraping-banner" id="scraping-banner">
@@ -631,8 +613,8 @@
       <!-- Initial state -->
       <div class="empty-state" style="grid-column:1/-1;">
         <div class="big-emoji">🍺</div>
-        <h3>Cerca le offerte birra nella tua zona</h3>
-        <p>Inserisci la tua città o CAP e lascia fare a noi!</p>
+        <h3>Caricamento offerte in corso...</h3>
+        <p>Stiamo cercando le migliori birre in offerta a Modena.</p>
       </div>
     </div>
   </div>
@@ -703,7 +685,7 @@
 //  STATE
 // ──────────────────────────────────────────
 let allOffers = [];
-let currentZone = '';
+const currentZone = 'modena';  // zona fissa
 let activeFilter = 'all';
 let activeMarkets = new Set();
 let pollingInterval = null;
@@ -711,25 +693,20 @@ let pollingInterval = null;
 // ──────────────────────────────────────────
 //  SEARCH
 // ──────────────────────────────────────────
-document.getElementById('zone-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') doSearch();
-});
+// Auto-carica Modena all'avvio
+document.addEventListener('DOMContentLoaded', () => doSearch());
 
 async function doSearch() {
-  const zone = document.getElementById('zone-input').value.trim();
-  if (!zone) { showToast('⚠️ Inserisci una città o CAP', 'warning'); return; }
-
-  currentZone = zone;
   activeMarkets.clear();
   setLoadingState(true);
   showSkeletons();
 
   try {
-    const data = await fetchBeers(zone);
+    const data = await fetchBeers(currentZone);
     handleResponse(data);
 
     if (data.scraping) {
-      startPolling(zone);
+      startPolling(currentZone);
     }
   } catch(err) {
     showToast('❌ Errore di connessione. Riprova.', 'error');
@@ -885,7 +862,7 @@ function renderGrid(offers) {
     grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
       <div class="big-emoji">🔍</div>
       <h3>Nessuna birra trovata</h3>
-      <p>Prova a rimuovere qualche filtro o a cambiare zona.</p>
+      <p>Prova a rimuovere qualche filtro o premi Aggiorna.</p>
     </div>`;
     return;
   }
@@ -972,15 +949,8 @@ function showEmpty(title, sub) {
 //  LOADING STATE
 // ──────────────────────────────────────────
 function setLoadingState(on) {
-  const btn = document.getElementById('search-btn');
-  const txt = document.getElementById('search-btn-text');
-  if (on) {
-    btn.classList.add('loading');
-    txt.innerHTML = '<span class="spinner"></span> Ricerca...';
-  } else {
-    btn.classList.remove('loading');
-    txt.textContent = 'Cerca offerte';
-  }
+  // Nessun bottone di ricerca: mostra/nascondi skeleton
+  if (on) showSkeletons();
 }
 
 // ──────────────────────────────────────────
