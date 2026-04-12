@@ -1,0 +1,36 @@
+# Ambiente virtuale Python
+.venv/
+venv/
+env/
+
+# Database runtime (dati locali, non vanno in repo)
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Variabili d'ambiente
+.env
+.env.local
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Log
+*.log
+
+# Distribuzione / build
+dist/
+build/
+*.egg-info/

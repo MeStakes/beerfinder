@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BeerFinder 🍺 — Offerte Birra in Tempo Reale</title>
+<style>
+  :root {
+    --bg: #06060a;
+    --surface: #0e0e16;
+    --card: #12121c;
+    --card-hover: #17172a;
+    --border: #1e1e30;
+    --amber: #f59e0b;
+    --amber-dim: #d97706;
+    --amber-glow: rgba(245,158,11,0.15);
+    --amber-glow-strong: rgba(245,158,11,0.35);
+    --green: #10b981;
+    --green-glow: rgba(16,185,129,0.2);
+    --red: #ef4444;
+    --text: #f0eff5;
+    --text-sub: #8b8aa0;
+    --text-dim: #4a4960;
+    --radius: 16px;
+    --radius-sm: 10px;
+    --font: 'Inter', system-ui, sans-serif;
+    --transition: 0.25s cubic-bezier(0.4,0,0.2,1);
+  }
+
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Canvas bolle ── */
+  #bubble-canvas {
+    position: fixed; top:0; left:0; width:100%; height:100%;
+    pointer-events:none; z-index:0; opacity:0.4;
+  }
+
+  /* ── Noise overlay ── */
+  body::after {
+    content:''; position:fixed; inset:0; z-index:1;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events:none; opacity:0.5;
+  }
+
+  .wrapper { position:relative; z-index:2; }
+
+  /* ── HEADER ── */
+  header {
+    text-align:center; padding:60px 24px 40px;
+    background: linear-gradient(180deg, rgba(245,158,11,0.08) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    font-weight: 900;
+    letter-spacing: -2px;
+    line-height: 1;
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 40%, #d97706 70%, #92400e 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 40px rgba(245,158,11,0.4));
+    margin-bottom: 8px;
+  }
+
+  .logo-sub {
+    font-size: 1rem; font-weight:400;
+    color: var(--text-sub); letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  /* ── SEARCH BAR ── */
+  .search-section {
+    padding: 40px 24px 0;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+
+  .search-label {
+    font-size: 0.85rem; font-weight:500;
+    color: var(--amber); letter-spacing: 1px;
+    text-transform: uppercase; margin-bottom:12px;
+    display:block;
+  }
+
+  .search-row {
+    display: flex; gap:12px; align-items:center;
+  }
+
+  .search-input-wrap {
+    flex:1; position:relative;
+  }
+
+  .search-icon {
+    position:absolute; left:18px; top:50%; transform:translateY(-50%);
+    font-size:1.2rem; pointer-events:none;
+  }
+
+  #zone-input {
+    width:100%; padding:18px 18px 18px 52px;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text); font-size:1.05rem; font-family:var(--font);
+    transition: var(--transition);
+    outline:none;
+  }
+
+  #zone-input:focus {
+    border-color: var(--amber);
+    box-shadow: 0 0 0 4px var(--amber-glow), 0 0 30px var(--amber-glow);
+  }
+
+  #zone-input::placeholder { color: var(--text-dim); }
+
+  .search-btn {
+    padding: 18px 28px;
+    background: linear-gradient(135deg, var(--amber), var(--amber-dim));
+    border: none; border-radius: var(--radius);
+    color: #000; font-size:1rem; font-weight:700;
+    cursor:pointer; transition: var(--transition);
+    white-space: nowrap; font-family: var(--font);
+    position:relative; overflow:hidden;
+  }
+
+  .search-btn::before {
+    content:''; position:absolute; inset:0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
+    opacity:0; transition:var(--transition);
+  }
+
+  .search-btn:hover { transform:translateY(-2px); box-shadow:0 8px 30px var(--amber-glow-strong); }
+  .search-btn:hover::before { opacity:1; }
+  .search-btn:active { transform:translateY(0); }
+
+  .search-btn.loading {
+    pointer-events:none; opacity:0.8;
+  }
+
+  .spinner {
+    display:inline-block; width:18px; height:18px;
+    border:2.5px solid rgba(0,0,0,0.3);
+    border-top-color:#000; border-radius:50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align:middle; margin-right:6px;
+  }
+
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* ── STATS BAR ── */
+  .stats-bar {
+    max-width:1400px; margin:32px auto 0;
+    padding:0 24px;
+    display:flex; gap:16px; flex-wrap:wrap;
+    opacity:0; transform:translateY(10px);
+    transition:var(--transition);
+  }
+
+  .stats-bar.visible { opacity:1; transform:none; }
+
+  .stat-pill {
+    background: var(--surface);
+    border:1px solid var(--border);
+    border-radius:100px; padding:8px 18px;
+    font-size:0.85rem; color:var(--text-sub);
+    display:flex; align-items:center; gap:8px;
+  }
+
+  .stat-pill strong { color:var(--text); font-weight:600; }
+  .stat-pill.green strong { color: var(--green); }
+  .stat-pill.amber strong { color: var(--amber); }
+
+  .pulse {
+    width:8px; height:8px; border-radius:50%;
+    background:var(--green);
+    animation: pulse-anim 2s ease-in-out infinite;
+    flex-shrink:0;
+  }
+
+  @keyframes pulse-anim {
+    0%,100% { transform:scale(1); opacity:1; }
+    50% { transform:scale(1.4); opacity:0.6; }
+  }
+
+  /* ── FILTER BAR ── */
+  .filter-section {
+    max-width:1400px; margin:28px auto 0;
+    padding:0 24px;
+    display:flex; gap:12px; flex-wrap:wrap; align-items:center;
+    opacity:0; transform:translateY(10px);
+    transition:var(--transition) 0.05s;
+  }
+
+  .filter-section.visible { opacity:1; transform:none; }
+
+  .filter-label {
+    font-size:0.8rem; color:var(--text-dim);
+    font-weight:500; letter-spacing:1px;
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
+
+  .filter-chips { display:flex; gap:8px; flex-wrap:wrap; }
+
+  .chip {
+    padding:8px 16px; border-radius:100px;
+    border:1.5px solid var(--border);
+    background:transparent; color:var(--text-sub);
+    font-size:0.85rem; font-family:var(--font);
+    cursor:pointer; transition:var(--transition);
+    white-space:nowrap;
+  }
+
+  .chip:hover { border-color:var(--amber); color:var(--text); }
+
+  .chip.active {
+    background:var(--amber-glow); border-color:var(--amber);
+    color:var(--amber); font-weight:600;
+  }
+
+  .filter-sep {
+    width:1px; height:28px; background:var(--border); flex-shrink:0;
+  }
+
+  .sort-select {
+    background:var(--surface); border:1.5px solid var(--border);
+    color:var(--text); padding:8px 14px; border-radius:100px;
+    font-size:0.85rem; font-family:var(--font); cursor:pointer;
+    outline:none; transition:var(--transition);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b8aa0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+
+  .sort-select:focus { border-color:var(--amber); }
+
+  /* ── GRID ── */
+  .grid-section {
+    max-width:1400px; margin:32px auto 0;
+    padding:0 24px 80px;
+  }
+
+  .grid {
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap:20px;
+  }
+
+  /* ── BEER CARD ── */
+  .beer-card {
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    overflow:hidden;
+    transition:var(--transition);
+    cursor:default;
+    position:relative;
+    animation: fadeInUp 0.4s ease both;
+  }
+
+  @keyframes fadeInUp {
+    from { opacity:0; transform:translateY(20px); }
+    to   { opacity:1; transform:none; }
+  }
+
+  .beer-card:hover {
+    background:var(--card-hover);
+    border-color:rgba(245,158,11,0.3);
+    transform:translateY(-4px);
+    box-shadow:
+      0 20px 60px rgba(0,0,0,0.5),
+      0 0 0 1px rgba(245,158,11,0.1),
+      0 0 40px rgba(245,158,11,0.08);
+  }
+
+  .card-header {
+    padding:20px 20px 0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+  }
+
+  .supermarket-badge {
+    display:flex; align-items:center; gap:6px;
+    font-size:0.78rem; font-weight:600;
+    color:var(--text-sub); letter-spacing:0.5px;
+    text-transform:uppercase;
+  }
+
+  .supermarket-dot {
+    width:8px; height:8px; border-radius:50%; flex-shrink:0;
+  }
+
+  .sale-badge {
+    background:linear-gradient(135deg, #10b981, #059669);
+    color:#fff; font-size:0.72rem; font-weight:700;
+    padding:4px 10px; border-radius:100px;
+    letter-spacing:0.5px; text-transform:uppercase;
+    box-shadow:0 0 16px rgba(16,185,129,0.4);
+    white-space:nowrap;
+    animation: badge-pulse 3s ease-in-out infinite;
+  }
+
+  @keyframes badge-pulse {
+    0%,100% { box-shadow:0 0 16px rgba(16,185,129,0.4); }
+    50% { box-shadow:0 0 24px rgba(16,185,129,0.7); }
+  }
+
+  .card-img-wrap {
+    height:160px; display:flex; align-items:center; justify-content:center;
+    padding:20px; position:relative;
+  }
+
+  .card-img {
+    max-height:130px; max-width:100%;
+    object-fit:contain; filter:drop-shadow(0 8px 20px rgba(0,0,0,0.5));
+    transition:var(--transition);
+  }
+
+  .beer-card:hover .card-img { transform:scale(1.05) translateY(-4px); }
+
+  .card-img-placeholder {
+    font-size:5rem; line-height:1;
+    filter:drop-shadow(0 8px 20px rgba(245,158,11,0.3));
+    transition:var(--transition);
+  }
+
+  .beer-card:hover .card-img-placeholder { transform:scale(1.08) translateY(-4px); }
+
+  .card-body { padding:0 20px 20px; }
+
+  .beer-name {
+    font-size:0.95rem; font-weight:600;
+    color:var(--text); line-height:1.4;
+    margin-bottom:16px; min-height:2.8em;
+    display:-webkit-box; -webkit-line-clamp:2;
+    -webkit-box-orient:vertical; overflow:hidden;
+  }
+
+  .price-row {
+    display:flex; align-items:flex-end; gap:10px;
+    margin-bottom:12px;
+  }
+
+  .price-sale {
+    font-size:2rem; font-weight:800; line-height:1;
+    background:linear-gradient(135deg, #fbbf24, #f59e0b);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    background-clip:text;
+  }
+
+  .price-orig {
+    font-size:1rem; color:var(--text-dim);
+    text-decoration:line-through; line-height:1; margin-bottom:4px;
+  }
+
+  .discount-tag {
+    margin-left:auto;
+    background:rgba(16,185,129,0.15);
+    border:1px solid rgba(16,185,129,0.3);
+    color:var(--green); font-size:0.85rem; font-weight:700;
+    padding:4px 10px; border-radius:8px;
+  }
+
+  .card-footer {
+    display:flex; justify-content:space-between; align-items:center;
+    margin-top:4px;
+  }
+
+  .validity-text {
+    font-size:0.75rem; color:var(--text-dim);
+    display:flex; align-items:center; gap:4px;
+  }
+
+  .source-tag {
+    font-size:0.68rem; color:var(--text-dim);
+    background:var(--surface); border:1px solid var(--border);
+    padding:3px 8px; border-radius:6px;
+  }
+
+  /* Glow top edge per card in offerta */
+  .beer-card.on-sale::before {
+    content:''; position:absolute; top:0; left:0; right:0; height:2px;
+    background:linear-gradient(90deg, transparent, var(--green), transparent);
+    opacity:0.7;
+  }
+
+  /* ── SKELETON ── */
+  .skeleton {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:var(--radius); overflow:hidden; padding:20px;
+  }
+
+  .skel-line {
+    height:14px; border-radius:7px; margin-bottom:12px;
+    background:linear-gradient(90deg, var(--surface) 25%, var(--border) 50%, var(--surface) 75%);
+    background-size:200% 100%;
+    animation:shimmer 1.5s infinite;
+  }
+
+  .skel-box {
+    height:130px; border-radius:var(--radius-sm); margin-bottom:16px;
+    background:linear-gradient(90deg, var(--surface) 25%, var(--border) 50%, var(--surface) 75%);
+    background-size:200% 100%;
+    animation:shimmer 1.5s infinite;
+  }
+
+  @keyframes shimmer {
+    from { background-position:200% 0; }
+    to   { background-position:-200% 0; }
+  }
+
+  /* ── EMPTY STATE ── */
+  .empty-state {
+    text-align:center; padding:80px 24px;
+    color:var(--text-dim);
+  }
+
+  .empty-state .big-emoji { font-size:4rem; margin-bottom:16px; }
+  .empty-state h3 { font-size:1.2rem; color:var(--text-sub); margin-bottom:8px; }
+  .empty-state p { font-size:0.9rem; }
+
+  /* ── TOAST ── */
+  .toast {
+    position:fixed; bottom:32px; left:50%; transform:translateX(-50%) translateY(100px);
+    background:var(--card); border:1px solid var(--border);
+    border-radius:var(--radius); padding:14px 24px;
+    font-size:0.9rem; z-index:1000;
+    transition:0.4s cubic-bezier(0.34,1.56,0.64,1);
+    box-shadow:0 20px 60px rgba(0,0,0,0.5);
+    display:flex; gap:10px; align-items:center;
+    white-space:nowrap;
+  }
+
+  .toast.show { transform:translateX(-50%) translateY(0); }
+
+  /* ── REFRESH BTN ── */
+  .refresh-btn {
+    background:transparent; border:1.5px solid var(--border);
+    color:var(--text-sub); padding:8px 16px;
+    border-radius:100px; font-size:0.85rem;
+    font-family:var(--font); cursor:pointer;
+    transition:var(--transition); display:flex;
+    align-items:center; gap:6px;
+  }
+
+  .refresh-btn:hover { border-color:var(--amber); color:var(--amber); }
+  .refresh-btn.spinning .refresh-icon { animation:spin 1s linear infinite; }
+
+  /* ── GLOW SEPARATORS ── */
+  .glow-sep {
+    height:1px; max-width:1400px; margin:0 auto;
+    background:linear-gradient(90deg, transparent, var(--border), transparent);
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    text-align:center; padding:32px;
+    color:var(--text-dim); font-size:0.8rem;
+    border-top:1px solid var(--border);
+  }
+
+  footer a { color:var(--amber); text-decoration:none; }
+
+  /* ── RESPONSIVE ── */
+  @media(max-width:600px) {
+    .search-row { flex-direction:column; }
+    .search-btn { width:100%; }
+    .grid { grid-template-columns:1fr; }
+    .stats-bar { gap:8px; }
+  }
+
+  /* ── HERO GLOW ── */
+  .hero-glow {
+    position:absolute; top:-150px; left:50%; transform:translateX(-50%);
+    width:600px; height:300px;
+    background:radial-gradient(ellipse, rgba(245,158,11,0.12) 0%, transparent 70%);
+    pointer-events:none; z-index:0;
+  }
+
+  /* ── SECTION TITLE ── */
+  .section-title {
+    display:flex; justify-content:space-between; align-items:center;
+    margin-bottom:20px; flex-wrap:wrap; gap:12px;
+  }
+
+  .section-title h2 {
+    font-size:1rem; font-weight:600; color:var(--text-sub);
+    text-transform:uppercase; letter-spacing:2px;
+  }
+
+  .results-count {
+    font-size:0.85rem; color:var(--text-dim);
+  }
+
+  .results-count strong { color:var(--amber); }
+
+  /* ── SCRAPING BANNER ── */
+  .scraping-banner {
+    max-width:1400px; margin:16px auto 0; padding:0 24px;
+    display:none;
+  }
+
+  .scraping-banner.visible { display:block; }
+
+  .banner-inner {
+    background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.2);
+    border-radius:var(--radius-sm); padding:12px 18px;
+    display:flex; align-items:center; gap:10px;
+    font-size:0.88rem; color:var(--text-sub);
+  }
+</style>
+</head>
+<body>
+
+<canvas id="bubble-canvas"></canvas>
+
+<div class="wrapper">
+
+  <!-- HEADER -->
+  <header style="position:relative; overflow:hidden;">
+    <div class="hero-glow"></div>
+    <div class="logo">🍺 BeerFinder</div>
+    <p class="logo-sub">Offerte birra in tempo reale · tutti i supermercati</p>
+  </header>
+
+  <!-- SEARCH -->
+  <div class="search-section">
+    <label class="search-label" for="zone-input">📍 Inserisci la tua città o CAP</label>
+    <div class="search-row">
+      <div class="search-input-wrap">
+        <span class="search-icon">🏙️</span>
+        <input
+          type="text"
+          id="zone-input"
+          placeholder="es. Milano, Roma, 20121..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+      <button class="search-btn" id="search-btn" onclick="doSearch()">
+        <span id="search-btn-text">Cerca offerte</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- SCRAPING BANNER -->
+  <div class="scraping-banner" id="scraping-banner">
+    <div class="banner-inner">
+      <div class="spinner" style="border-top-color:var(--amber); border-color:rgba(245,158,11,0.2);"></div>
+      Sto scansionando i volantini e i siti dei supermercati… attendere qualche secondo.
+    </div>
+  </div>
+
+  <!-- STATS BAR -->
+  <div class="stats-bar" id="stats-bar">
+    <div class="stat-pill">
+      <div class="pulse"></div>
+      <span>Aggiornato ora</span>
+    </div>
+    <div class="stat-pill green">
+      <span>🎯 Offerte trovate: <strong id="stat-total">0</strong></span>
+    </div>
+    <div class="stat-pill amber">
+      <span>💸 In sconto: <strong id="stat-on-sale">0</strong></span>
+    </div>
+    <div class="stat-pill">
+      <span>📉 Sconto medio: <strong id="stat-avg-disc">0%</strong></span>
+    </div>
+    <div class="stat-pill" id="stat-best-wrap" style="display:none;">
+      <span>🏆 Miglior offerta: <strong id="stat-best">—</strong></span>
+    </div>
+    <button class="refresh-btn" id="refresh-btn" onclick="doRefresh()">
+      <span class="refresh-icon">↻</span>
+      <span>Aggiorna</span>
+    </button>
+  </div>
+
+  <!-- FILTER BAR -->
+  <div class="filter-section" id="filter-section">
+    <span class="filter-label">Filtra:</span>
+    <div class="filter-chips" id="filter-chips">
+      <button class="chip active" onclick="setFilter('all', this)">Tutti</button>
+      <button class="chip" onclick="setFilter('sale', this)">🔥 In offerta</button>
+      <button class="chip" onclick="setFilter('10', this)">-10%+</button>
+      <button class="chip" onclick="setFilter('20', this)">-20%+</button>
+      <button class="chip" onclick="setFilter('30', this)">-30%+</button>
+    </div>
+    <div class="filter-sep"></div>
+    <div class="filter-chips" id="market-chips"></div>
+    <div class="filter-sep"></div>
+    <select class="sort-select" id="sort-select" onchange="applyFilters()">
+      <option value="discount">↓ Sconto maggiore</option>
+      <option value="price_asc">↑ Prezzo crescente</option>
+      <option value="price_desc">↓ Prezzo decrescente</option>
+      <option value="name">A→Z Nome</option>
+    </select>
+  </div>
+
+  <div class="glow-sep" style="margin-top:24px;"></div>
+
+  <!-- GRID -->
+  <div class="grid-section">
+    <div class="section-title" id="section-title" style="display:none;">
+      <h2>Risultati</h2>
+      <span class="results-count">Trovate <strong id="results-count-num">0</strong> birre</span>
+    </div>
+    <div class="grid" id="grid">
+      <!-- Initial state -->
+      <div class="empty-state" style="grid-column:1/-1;">
+        <div class="big-emoji">🍺</div>
+        <h3>Cerca le offerte birra nella tua zona</h3>
+        <p>Inserisci la tua città o CAP e lascia fare a noi!</p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>BeerFinder &copy; 2025 · Dati aggregati da volantini e siti supermercati ·
+    <a href="#">robots.txt respected</a> · Aggiornamento manuale</p>
+  </footer>
+
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ──────────────────────────────────────────
+//  BUBBLE CANVAS
+// ──────────────────────────────────────────
+(function() {
+  const canvas = document.getElementById('bubble-canvas');
+  const ctx = canvas.getContext('2d');
+  let bubbles = [];
+
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+
+  function createBubble() {
+    return {
+      x: Math.random() * canvas.width,
+      y: canvas.height + 20,
+      r: 3 + Math.random() * 12,
+      vy: -(0.3 + Math.random() * 0.8),
+      vx: (Math.random() - 0.5) * 0.3,
+      opacity: 0.1 + Math.random() * 0.3,
+      color: Math.random() > 0.5 ? '#f59e0b' : '#d97706',
+    };
+  }
+
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (Math.random() < 0.08) bubbles.push(createBubble());
+    bubbles = bubbles.filter(b => b.y > -20);
+    for (const b of bubbles) {
+      b.y += b.vy;
+      b.x += b.vx;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.strokeStyle = b.color;
+      ctx.globalAlpha = b.opacity;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = b.opacity * 0.15;
+      ctx.fillStyle = b.color;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    requestAnimationFrame(animate);
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+  animate();
+})();
+
+// ──────────────────────────────────────────
+//  STATE
+// ──────────────────────────────────────────
+let allOffers = [];
+let currentZone = '';
+let activeFilter = 'all';
+let activeMarkets = new Set();
+let pollingInterval = null;
+
+// ──────────────────────────────────────────
+//  SEARCH
+// ──────────────────────────────────────────
+document.getElementById('zone-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+async function doSearch() {
+  const zone = document.getElementById('zone-input').value.trim();
+  if (!zone) { showToast('⚠️ Inserisci una città o CAP', 'warning'); return; }
+
+  currentZone = zone;
+  activeMarkets.clear();
+  setLoadingState(true);
+  showSkeletons();
+
+  try {
+    const data = await fetchBeers(zone);
+    handleResponse(data);
+
+    if (data.scraping) {
+      startPolling(zone);
+    }
+  } catch(err) {
+    showToast('❌ Errore di connessione. Riprova.', 'error');
+    showEmpty('Errore di connessione', 'Assicurati che il server sia avviato.');
+  } finally {
+    setLoadingState(false);
+  }
+}
+
+async function fetchBeers(zone, sortBy) {
+  const sort = sortBy || document.getElementById('sort-select').value;
+  const url = `/api/beers?zone=${encodeURIComponent(zone)}&sort_by=${sort}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(resp.statusText);
+  return resp.json();
+}
+
+async function doRefresh() {
+  if (!currentZone) return;
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+
+  try {
+    await fetch(`/api/refresh?zone=${encodeURIComponent(currentZone)}`, { method:'POST' });
+    showToast('🔄 Scraping avviato…', 'info');
+    document.getElementById('scraping-banner').classList.add('visible');
+    startPolling(currentZone);
+  } catch(e) {
+    showToast('❌ Errore nel refresh', 'error');
+  } finally {
+    btn.classList.remove('spinning');
+  }
+}
+
+// ──────────────────────────────────────────
+//  POLLING (scraping in corso)
+// ──────────────────────────────────────────
+function startPolling(zone) {
+  clearInterval(pollingInterval);
+  pollingInterval = setInterval(async () => {
+    try {
+      const data = await fetchBeers(zone);
+      handleResponse(data);
+      if (!data.scraping) {
+        clearInterval(pollingInterval);
+        document.getElementById('scraping-banner').classList.remove('visible');
+        showToast('✅ Dati aggiornati!', 'success');
+      }
+    } catch(e) {}
+  }, 3000);
+}
+
+// ──────────────────────────────────────────
+//  RENDER
+// ──────────────────────────────────────────
+function handleResponse(data) {
+  allOffers = data.offers || [];
+
+  // Stats
+  const onSale = allOffers.filter(o => o.on_sale);
+  const avgDisc = onSale.length
+    ? Math.round(onSale.reduce((s, o) => s + o.discount_pct, 0) / onSale.length)
+    : 0;
+  const best = onSale.sort((a,b) => b.discount_pct - a.discount_pct)[0];
+
+  document.getElementById('stat-total').textContent = allOffers.length;
+  document.getElementById('stat-on-sale').textContent = onSale.length;
+  document.getElementById('stat-avg-disc').textContent = avgDisc + '%';
+  document.getElementById('stats-bar').classList.add('visible');
+  document.getElementById('filter-section').classList.add('visible');
+  document.getElementById('section-title').style.display = 'flex';
+
+  if (best) {
+    document.getElementById('stat-best').textContent = `${best.name.split(' ').slice(0,3).join(' ')} -${best.discount_pct}%`;
+    document.getElementById('stat-best-wrap').style.display = '';
+  }
+
+  // Market filter chips
+  buildMarketChips(allOffers);
+
+  // Banner scraping
+  if (data.scraping) {
+    document.getElementById('scraping-banner').classList.add('visible');
+  }
+
+  applyFilters();
+}
+
+function buildMarketChips(offers) {
+  const markets = {};
+  for (const o of offers) {
+    markets[o.supermarket] = (markets[o.supermarket] || 0) + 1;
+  }
+  const sorted = Object.entries(markets).sort((a,b) => b[1]-a[1]);
+  const wrap = document.getElementById('market-chips');
+  wrap.innerHTML = '';
+  for (const [name, count] of sorted.slice(0, 6)) {
+    const btn = document.createElement('button');
+    btn.className = 'chip' + (activeMarkets.has(name) ? ' active' : '');
+    btn.textContent = `${name} (${count})`;
+    btn.onclick = () => toggleMarket(name, btn);
+    wrap.appendChild(btn);
+  }
+}
+
+function toggleMarket(name, el) {
+  if (activeMarkets.has(name)) {
+    activeMarkets.delete(name);
+    el.classList.remove('active');
+  } else {
+    activeMarkets.add(name);
+    el.classList.add('active');
+  }
+  applyFilters();
+}
+
+function setFilter(f, el) {
+  document.querySelectorAll('#filter-chips .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  activeFilter = f;
+  applyFilters();
+}
+
+function applyFilters() {
+  let offers = [...allOffers];
+
+  if (activeFilter === 'sale') {
+    offers = offers.filter(o => o.on_sale);
+  } else if (!isNaN(parseInt(activeFilter))) {
+    offers = offers.filter(o => o.discount_pct >= parseInt(activeFilter));
+  }
+
+  if (activeMarkets.size > 0) {
+    offers = offers.filter(o => activeMarkets.has(o.supermarket));
+  }
+
+  const sort = document.getElementById('sort-select').value;
+  const sortFns = {
+    discount: (a,b) => b.discount_pct - a.discount_pct,
+    price_asc: (a,b) => a.sale_price - b.sale_price,
+    price_desc: (a,b) => b.sale_price - a.sale_price,
+    name: (a,b) => a.name.localeCompare(b.name),
+  };
+  offers.sort(sortFns[sort] || sortFns.discount);
+
+  document.getElementById('results-count-num').textContent = offers.length;
+  renderGrid(offers);
+}
+
+function renderGrid(offers) {
+  const grid = document.getElementById('grid');
+  if (!offers.length) {
+    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+      <div class="big-emoji">🔍</div>
+      <h3>Nessuna birra trovata</h3>
+      <p>Prova a rimuovere qualche filtro o a cambiare zona.</p>
+    </div>`;
+    return;
+  }
+
+  grid.innerHTML = offers.map((o, i) => beerCard(o, i)).join('');
+}
+
+function beerCard(o, idx) {
+  const delay = Math.min(idx * 40, 400);
+  const hasImage = o.image_url && o.image_url.startsWith('http');
+  const imgContent = hasImage
+    ? `<img class="card-img" src="${esc(o.image_url)}" alt="${esc(o.name)}" loading="lazy" onerror="this.parentNode.innerHTML='<div class=\\'card-img-placeholder\\'>🍺</div>'">`
+    : `<div class="card-img-placeholder">🍺</div>`;
+
+  const origPriceHtml = o.original_price
+    ? `<span class="price-orig">${o.original_price.toFixed(2)}€</span>` : '';
+
+  const discHtml = o.discount_pct > 0
+    ? `<span class="discount-tag">-${o.discount_pct}%</span>` : '';
+
+  const saleBadgeHtml = o.on_sale
+    ? `<span class="sale-badge">🔥 Offerta</span>` : '';
+
+  const validity = o.validity ? `<span class="validity-text">📅 ${esc(o.validity)}</span>` : '<span></span>';
+
+  const dotColor = o.supermarket_meta?.color || '#6b7280';
+  const marketName = o.supermarket_meta?.full_name || o.supermarket;
+
+  return `
+<div class="beer-card${o.on_sale ? ' on-sale' : ''}" style="animation-delay:${delay}ms">
+  <div class="card-header">
+    <div class="supermarket-badge">
+      <div class="supermarket-dot" style="background:${esc(dotColor)}"></div>
+      ${esc(marketName)}
+    </div>
+    ${saleBadgeHtml}
+  </div>
+  <div class="card-img-wrap">
+    ${imgContent}
+  </div>
+  <div class="card-body">
+    <div class="beer-name">${esc(o.name)}</div>
+    <div class="price-row">
+      <div>
+        <div class="price-sale">${o.sale_price.toFixed(2)}€</div>
+        ${origPriceHtml}
+      </div>
+      ${discHtml}
+    </div>
+    <div class="card-footer">
+      ${validity}
+      <span class="source-tag">${esc(o.source)}</span>
+    </div>
+  </div>
+</div>`;
+}
+
+// ──────────────────────────────────────────
+//  SKELETONS
+// ──────────────────────────────────────────
+function showSkeletons() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = Array(9).fill(0).map(() => `
+<div class="skeleton">
+  <div class="skel-line" style="width:50%;margin-bottom:8px;"></div>
+  <div class="skel-box"></div>
+  <div class="skel-line" style="width:80%;"></div>
+  <div class="skel-line" style="width:40%;height:24px;"></div>
+  <div class="skel-line" style="width:60%;height:10px;margin-top:4px;"></div>
+</div>`).join('');
+}
+
+function showEmpty(title, sub) {
+  document.getElementById('grid').innerHTML = `
+<div class="empty-state" style="grid-column:1/-1;">
+  <div class="big-emoji">⚠️</div>
+  <h3>${esc(title)}</h3>
+  <p>${esc(sub)}</p>
+</div>`;
+}
+
+// ──────────────────────────────────────────
+//  LOADING STATE
+// ──────────────────────────────────────────
+function setLoadingState(on) {
+  const btn = document.getElementById('search-btn');
+  const txt = document.getElementById('search-btn-text');
+  if (on) {
+    btn.classList.add('loading');
+    txt.innerHTML = '<span class="spinner"></span> Ricerca...';
+  } else {
+    btn.classList.remove('loading');
+    txt.textContent = 'Cerca offerte';
+  }
+}
+
+// ──────────────────────────────────────────
+//  TOAST
+// ──────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.borderColor = type === 'success' ? 'var(--green)' : type === 'error' ? 'var(--red)' : 'var(--border)';
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+// ──────────────────────────────────────────
+//  UTILS
+// ──────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
