@@ -13,12 +13,13 @@ import time
 from database import init_db, get_cached_offers, save_offers, get_cache_info
 from scraper import scrape_all
 
-# Stato scraping in corso per zona
+# Tiene traccia delle zone per cui è in corso uno scraping (evita doppioni)
 _scraping_zones: set = set()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Crea le tabelle SQLite all'avvio se non esistono
     await init_db()
     yield
 
@@ -30,6 +31,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Permette richieste da qualsiasi origine (necessario per il frontend SPA)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -37,14 +39,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Supermercati sempre esclusi dai risultati
+SUPERMARKET_ESCLUSI = {"bennet"}
+
 
 # ─── Background task ──────────────────────────────────────────
 async def run_scrape(zone: str):
+    """Esegue lo scraping in background e salva i risultati nel database."""
     try:
         _scraping_zones.add(zone.lower())
         offers = await scrape_all(zone)
         await save_offers(zone, offers)
     finally:
+        # Rimuove la zona dalla lista "in corso" anche in caso di errore
         _scraping_zones.discard(zone.lower())
 
 
@@ -63,22 +70,25 @@ async def get_beers(
     if not zone_key:
         raise HTTPException(400, "Zona obbligatoria")
 
-    # Controlla cache (a meno che force_refresh)
+    # Usa la cache se non è richiesto un aggiornamento forzato
     cached = None if force_refresh else await get_cached_offers(zone_key)
 
     if not cached and zone_key not in _scraping_zones:
-        # Scraping sincrono (prima volta o force_refresh)
+        # Prima richiesta o force_refresh: scraping sincrono (l'utente aspetta il risultato)
         offers = await scrape_all(zone_key)
         await save_offers(zone_key, offers)
         cached = offers
 
     elif zone_key in _scraping_zones:
-        # Scraping in corso: usa cache precedente o demo
+        # Scraping già in corso: usa la cache precedente per non bloccare l'utente
         cached = await get_cached_offers(zone_key) or []
 
     offers = cached or []
 
-    # ── Filtri ──
+    # ── Supermercati esclusi permanentemente ──
+    offers = [o for o in offers if o["supermarket"].lower() not in SUPERMARKET_ESCLUSI]
+
+    # ── Filtri opzionali ──
     if supermarket:
         offers = [o for o in offers if supermarket.lower() in o["supermarket"].lower()]
     if on_sale_only:
@@ -121,7 +131,7 @@ async def refresh(
 
 @app.get("/api/stats")
 async def stats(zone: str = Query(...)):
-    """Statistiche offerte per zona."""
+    """Statistiche offerte per zona: totale, in offerta, sconto medio, miglior deal."""
     zone_key = zone.strip().lower()
     offers = await get_cached_offers(zone_key) or []
     if not offers:
@@ -131,6 +141,7 @@ async def stats(zone: str = Query(...)):
     avg_disc = int(sum(o["discount_pct"] for o in on_sale) / len(on_sale)) if on_sale else 0
     best = max(on_sale, key=lambda x: x["discount_pct"]) if on_sale else None
 
+    # Conta quante offerte ci sono per ogni supermercato
     supermarkets = {}
     for o in offers:
         s = o["supermarket"]
@@ -149,7 +160,7 @@ async def stats(zone: str = Query(...)):
 
 @app.get("/api/supermarkets")
 async def list_supermarkets(zone: str = Query(...)):
-    """Lista supermercati trovati per zona."""
+    """Lista supermercati trovati per zona, ordinati per numero di offerte."""
     zone_key = zone.strip().lower()
     offers = await get_cached_offers(zone_key) or []
     markets = {}
@@ -163,6 +174,7 @@ async def list_supermarkets(zone: str = Query(...)):
 
 @app.get("/api/health")
 async def health():
+    """Healthcheck — usato da Railway/Render per verificare che il server sia vivo."""
     return {"status": "ok", "timestamp": int(time.time())}
 
 
@@ -172,6 +184,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 async def root():
+    """Serve la SPA (single-page application) contenuta in static/index.html."""
     return FileResponse("static/index.html")
 
 

@@ -11,7 +11,7 @@ from typing import Optional
 from bs4 import BeautifulSoup
 from database import log_scrape
 
-# --- Supermercati noti con logo emoji ---
+# --- Supermercati noti con logo emoji e colore brand ---
 SUPERMARKET_META = {
     "lidl": {"logo": "🔵", "color": "#0050aa", "full_name": "Lidl"},
     "esselunga": {"logo": "🟢", "color": "#006b2b", "full_name": "Esselunga"},
@@ -35,6 +35,7 @@ SUPERMARKET_META = {
     "simply": {"logo": "🟢", "color": "#00843d", "full_name": "Simply"},
 }
 
+# Parole chiave per riconoscere prodotti birra
 BEER_KEYWORDS = [
     "birra", "beer", "lager", "ale", "ipa", "weiss", "bock", "pils", "pilsner",
     "stout", "porter", "radler", "shandy", "corona", "heineken", "peroni",
@@ -42,36 +43,43 @@ BEER_KEYWORDS = [
     "stella artois", "tuborg", "leffe", "hoegaarden", "desperados", "tennent"
 ]
 
+# Lista di user-agent reali da ruotare per sembrare un browser normale
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
 ]
 
+# Header HTTP di base per le richieste
+# ATTENZIONE: Accept-Encoding va omesso — se impostato manualmente httpx non decomprime
+# automaticamente la risposta gzip, e BeautifulSoup riceve dati binari illeggibili
 HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "it-IT,it;q=0.9,en;q=0.8",
-    # Accept-Encoding omesso: httpx non decomprime automaticamente se impostato manualmente
     "Connection": "keep-alive",
     "DNT": "1",
 }
 
 
 def get_headers() -> dict:
+    """Restituisce gli header con un user-agent casuale (evita blocchi anti-bot)."""
     h = HEADERS.copy()
     h["User-Agent"] = random.choice(USER_AGENTS)
     return h
 
 
 def is_beer(text: str) -> bool:
+    """Controlla se il testo del prodotto riguarda la birra."""
     text_lower = text.lower()
     return any(kw in text_lower for kw in BEER_KEYWORDS)
 
 
 def extract_price(text: str) -> Optional[float]:
+    """Estrae il prezzo da una stringa (es. '4,99 €' → 4.99)."""
     match = re.search(r"(\d+[,\.]\d{2})", text)
     if match:
         return float(match.group(1).replace(",", "."))
+    # Fallback: intero seguito da simbolo euro
     match = re.search(r"(\d+)\s*€", text)
     if match:
         return float(match.group(1))
@@ -79,6 +87,8 @@ def extract_price(text: str) -> Optional[float]:
 
 
 def get_supermarket_meta(name: str) -> dict:
+    """Restituisce logo, colore e nome completo per un supermercato noto.
+    Se non riconosciuto, usa valori generici."""
     name_lower = name.lower()
     for key, meta in SUPERMARKET_META.items():
         if key in name_lower:
@@ -87,6 +97,7 @@ def get_supermarket_meta(name: str) -> dict:
 
 
 def calc_discount(original: float, sale: float) -> int:
+    """Calcola la percentuale di sconto tra prezzo originale e prezzo scontato."""
     if original and sale and original > sale:
         return int(round((1 - sale / original) * 100))
     return 0
@@ -96,7 +107,9 @@ def calc_discount(original: float, sale: float) -> int:
 # SORGENTE 1: promoqui.it
 # ============================================================
 async def scrape_promoqui(client: httpx.AsyncClient, zone: str) -> list:
-    """Scrapa offerte birra da promoqui.it (risultati nazionali)."""
+    """Scrapa offerte birra da promoqui.it.
+    Il sito usa Next.js con classi CSS hash-suffixed (es. OffersList_offer__abc123),
+    quindi usiamo find_all con funzione filtro invece di selettori CSS statici."""
     offers = []
     url = "https://www.promoqui.it/offerte/birra/"
     try:
@@ -107,39 +120,39 @@ async def scrape_promoqui(client: httpx.AsyncClient, zone: str) -> list:
 
         soup = BeautifulSoup(resp.text, "lxml")
 
-        # Trova le card offerta: usa find_all con filtro classe (più affidabile di select CSS)
         def has_offer_root(tag):
+            """Identifica le card offerta cercando la classe base OffersList_offer__.
+            Esclude i sotto-elementi (image, information, title, text) e richiede un'immagine."""
             return tag.name and any(
                 "OffersList_offer__" in c and "image" not in c and "information" not in c
                 and "title" not in c and "text" not in c
                 for c in tag.get("class", [])
-            ) and tag.find("img")  # solo card con immagine (esclude wrapper vuoti)
+            ) and tag.find("img")
 
         cards = soup.find_all(has_offer_root)
 
         for card in cards:
-            # Titolo
+            # Titolo del prodotto
             title_el = card.find(lambda t: t.name and any("__title" in c for c in t.get("class", [])))
             if not title_el:
                 continue
             title = title_el.get_text(strip=True)
 
-            # Immagine
+            # URL immagine prodotto
             img_el = card.find("img", src=True)
             img_url = img_el["src"] if img_el else ""
 
-            # Link al volantino (primo link della card)
+            # Link alla pagina offerta su promoqui.it
             link_el = card.find("a", href=True)
             link_url = ""
             if link_el:
                 href = link_el["href"]
                 link_url = href if href.startswith("http") else f"https://www.promoqui.it{href}"
 
-            # Prezzo: cerchiamo il div PriceLabel e prendiamo il suo testo grezzo
+            # Prezzo scontato: il div PriceLabel contiene testo tipo "0.99€"
             price_label = card.find(lambda t: t.name and any("PriceLabel_price-label__" in c for c in t.get("class", [])))
             sale_price = None
             if price_label:
-                # Il testo del div è tipo "0.99€" — estraiamo il numero
                 m = re.search(r"(\d+[,\.]\d+)", price_label.get_text(strip=True))
                 if m:
                     try:
@@ -147,10 +160,11 @@ async def scrape_promoqui(client: httpx.AsyncClient, zone: str) -> list:
                     except ValueError:
                         pass
 
+            # Salta card senza prezzo (probabilmente banner pubblicitari)
             if not sale_price:
                 continue
 
-            # Percentuale sconto
+            # Percentuale di sconto (es. "-25%")
             discount_el = card.find(lambda t: t.name and any("__discount" in c for c in t.get("class", [])))
             discount_pct = 0
             if discount_el:
@@ -158,12 +172,12 @@ async def scrape_promoqui(client: httpx.AsyncClient, zone: str) -> list:
                 if m:
                     discount_pct = int(m.group(1))
 
-            # Prezzo originale calcolato dallo sconto
+            # Prezzo originale: calcolato inversamente dallo sconto
             original_price = None
             if discount_pct > 0:
                 original_price = round(sale_price / (1 - discount_pct / 100), 2)
 
-            # Supermercato
+            # Nome del supermercato
             retailer_el = card.find(lambda t: t.name and any("__retailer" in c for c in t.get("class", [])))
             supermarket = retailer_el.get_text(strip=True) if retailer_el else "Supermercato"
 
@@ -189,13 +203,13 @@ async def scrape_promoqui(client: httpx.AsyncClient, zone: str) -> list:
         await log_scrape(zone, "promoqui", "error", 0, str(e))
 
     return offers
-    return offers
 
 
 # ============================================================
 # SORGENTE 2: volantino.it
 # ============================================================
 async def scrape_volantino(client: httpx.AsyncClient, zone: str) -> list:
+    """Scrapa offerte birra da volantino.it per la zona specificata."""
     offers = []
     url = f"https://www.volantino.it/cerca/?q=birra&comune={zone}"
     try:
@@ -204,6 +218,7 @@ async def scrape_volantino(client: httpx.AsyncClient, zone: str) -> list:
             return []
         soup = BeautifulSoup(resp.text, "lxml")
 
+        # Prova selettori comuni per card prodotto
         cards = soup.select(".product, .offerta, .promo-item, [class*='product'], [class*='offer']")
 
         for card in cards:
@@ -214,6 +229,7 @@ async def scrape_volantino(client: httpx.AsyncClient, zone: str) -> list:
             if not is_beer(title):
                 continue
 
+            # Estrae tutti i prezzi dalla card e li ordina: il più basso è il prezzo scontato
             price_text = card.get_text(" ", strip=True)
             prices = re.findall(r"(\d+[,\.]\d{2})\s*€?", price_text)
             price_vals = sorted([float(p.replace(",", ".")) for p in prices if 0.5 < float(p.replace(",", ".")) < 100])
@@ -262,6 +278,7 @@ async def scrape_volantino(client: httpx.AsyncClient, zone: str) -> list:
 # SORGENTE 3: offerte.it
 # ============================================================
 async def scrape_offerte(client: httpx.AsyncClient, zone: str) -> list:
+    """Scrapa offerte birra da offerte.it per la zona specificata."""
     offers = []
     url = f"https://www.offerte.it/cerca/birra/{zone}/"
     try:
@@ -328,6 +345,8 @@ async def scrape_offerte(client: httpx.AsyncClient, zone: str) -> list:
 # DEMO DATA (fallback se nessuna fonte risponde)
 # ============================================================
 def get_demo_data(zone: str) -> list:
+    """Dati di esempio usati come fallback quando tutte le fonti sono irraggiungibili
+    (rete assente, siti in manutenzione, bot-protection attiva)."""
     beers = [
         {"name": "Birra Moretti 6x33cl", "supermarket": "Esselunga", "sale_price": 4.49, "original_price": 5.99, "on_sale": True},
         {"name": "Heineken 24x33cl", "supermarket": "Conad", "sale_price": 14.99, "original_price": 19.99, "on_sale": True},
@@ -374,24 +393,27 @@ def get_demo_data(zone: str) -> list:
 # ENTRY POINT PRINCIPALE
 # ============================================================
 async def scrape_all(zone: str) -> list:
-    """Scrapa tutte le fonti in parallelo e unifica i risultati."""
+    """Scrapa tutte le fonti in parallelo e unifica i risultati.
+    Se nessuna fonte restituisce dati reali, usa il fallback demo."""
     async with httpx.AsyncClient(
         limits=httpx.Limits(max_connections=5),
         timeout=httpx.Timeout(20.0)
     ) as client:
+        # Lancia tutte le fonti contemporaneamente (più veloce)
         results = await asyncio.gather(
             scrape_promoqui(client, zone),
             scrape_volantino(client, zone),
             scrape_offerte(client, zone),
-            return_exceptions=True
+            return_exceptions=True  # non fa crashare tutto se una fonte fallisce
         )
 
+    # Raccoglie solo i risultati validi (scarta eccezioni)
     all_offers = []
     for r in results:
         if isinstance(r, list):
             all_offers.extend(r)
 
-    # Deduplica per nome + supermercato
+    # Deduplica: stessa birra nello stesso supermercato conta una volta sola
     seen = set()
     unique = []
     for offer in all_offers:
@@ -400,11 +422,11 @@ async def scrape_all(zone: str) -> list:
             seen.add(key)
             unique.append(offer)
 
-    # Fallback demo se niente trovato
+    # Se tutto fallisce (bot-protection, rete assente) usa dati demo
     if not unique:
         unique = get_demo_data(zone)
 
-    # Ordina: prima in offerta, poi per sconto decrescente
+    # Ordina: prima le offerte in sconto, poi per % sconto decrescente, poi prezzo
     unique.sort(key=lambda x: (-x["on_sale"], -x["discount_pct"], x["sale_price"]))
 
     return unique
