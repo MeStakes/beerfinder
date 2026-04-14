@@ -40,7 +40,7 @@ app.add_middleware(
 )
 
 # Supermercati sempre esclusi dai risultati
-SUPERMARKET_ESCLUSI = {"BENNET"}
+SUPERMARKET_ESCLUSI = ["bennet"]
 
 
 # ─── Background task ──────────────────────────────────────────
@@ -85,9 +85,8 @@ async def get_beers(
 
     offers = cached or []
 
-    # ── Supermercati esclusi permanentemente (confronto case-insensitive) ──
-    esclusi_upper = {s.upper() for s in SUPERMARKET_ESCLUSI}
-    offers = [o for o in offers if o["supermarket"].upper() not in esclusi_upper]
+    # ── Supermercati esclusi — doppio filtro sottostringa (anche se il nome varia) ──
+    offers = [o for o in offers if not any(e in o["supermarket"].lower() for e in SUPERMARKET_ESCLUSI)]
 
     # ── Filtri opzionali ──
     if supermarket:

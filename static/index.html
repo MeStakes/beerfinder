@@ -42,7 +42,7 @@
   /* ── Canvas bolle ── */
   #bubble-canvas {
     position: fixed; top:0; left:0; width:100%; height:100%;
-    pointer-events:none; z-index:0; opacity:0.4;
+    pointer-events:none; z-index:0; opacity:0.75;
   }
 
   /* ── Noise overlay ── */
@@ -78,74 +78,6 @@
     font-size: 1rem; font-weight:400;
     color: var(--text-sub); letter-spacing: 3px;
     text-transform: uppercase;
-  }
-
-  /* ── SEARCH BAR ── */
-  .search-section {
-    max-width: 720px;
-    margin: 32px auto 0;
-    padding: 0 24px;
-  }
-
-  .search-label {
-    font-size: 0.85rem; font-weight:500;
-    color: var(--amber); letter-spacing: 1px;
-    text-transform: uppercase; margin-bottom:12px;
-    display:block;
-  }
-
-  .search-row {
-    display: flex; gap:12px; align-items:center;
-  }
-
-  .search-input-wrap {
-    flex:1; position:relative;
-  }
-
-  .search-icon {
-    position:absolute; left:18px; top:50%; transform:translateY(-50%);
-    font-size:1.2rem; pointer-events:none;
-  }
-
-  #zone-input {
-    width:100%; padding:18px 18px 18px 52px;
-    background: var(--surface);
-    border: 1.5px solid var(--border);
-    border-radius: var(--radius);
-    color: var(--text); font-size:1.05rem; font-family:var(--font);
-    transition: var(--transition);
-    outline:none;
-  }
-
-  #zone-input:focus {
-    border-color: var(--amber);
-    box-shadow: 0 0 0 4px var(--amber-glow), 0 0 30px var(--amber-glow);
-  }
-
-  #zone-input::placeholder { color: var(--text-dim); }
-
-  .search-btn {
-    padding: 18px 28px;
-    background: linear-gradient(135deg, var(--amber), var(--amber-dim));
-    border: none; border-radius: var(--radius);
-    color: #000; font-size:1rem; font-weight:700;
-    cursor:pointer; transition: var(--transition);
-    white-space: nowrap; font-family: var(--font);
-    position:relative; overflow:hidden;
-  }
-
-  .search-btn::before {
-    content:''; position:absolute; inset:0;
-    background: linear-gradient(135deg, rgba(255,255,255,0.2), transparent);
-    opacity:0; transition:var(--transition);
-  }
-
-  .search-btn:hover { transform:translateY(-2px); box-shadow:0 8px 30px var(--amber-glow-strong); }
-  .search-btn:hover::before { opacity:1; }
-  .search-btn:active { transform:translateY(0); }
-
-  .search-btn.loading {
-    pointer-events:none; opacity:0.8;
   }
 
   .spinner {
@@ -378,6 +310,22 @@
     margin-top:4px;
   }
 
+  .ppl-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--amber);
+    background: var(--amber-glow);
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 6px;
+    padding: 2px 7px;
+    letter-spacing: 0.3px;
+    margin-left: 6px;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
   .card-location {
     font-size:0.75rem; color:var(--text-dim);
     display:flex; align-items:center; gap:4px;
@@ -504,10 +452,96 @@
 
   /* ── RESPONSIVE ── */
   @media(max-width:600px) {
-    .search-row { flex-direction:column; }
-    .search-btn { width:100%; }
     .grid { grid-template-columns:1fr; }
     .stats-bar { gap:8px; }
+  }
+
+  /* ── FOAM SPRAY PARTICLE ── */
+  @keyframes foam-fly {
+    0%   { opacity: 1;  transform: translate(-50%,-50%) scale(1); }
+    100% { opacity: 0;  transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.1); }
+  }
+  .foam-dot {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 999;
+    animation: foam-fly 0.65s ease-out forwards;
+  }
+
+  /* ── LOGO CLINK ANIMATION ── */
+  .l-b, .l-e {
+    display: inline-block;
+    /* eredita il gradiente del parent */
+    background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 40%, #d97706 70%, #92400e 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* B tende verso destra (verso la e) */
+  @keyframes clink-b {
+    0%, 55%, 100% { transform: rotate(0deg) translate(0,0); }
+    65%  { transform: rotate(18deg) translate(5px, -4px); }
+    70%  { transform: rotate(16deg) translate(4px, -3px); }
+    75%  { transform: rotate(-4deg) translate(-1px, 1px); }
+    80%  { transform: rotate(8deg) translate(2px, -1px); }
+    88%  { transform: rotate(-2deg) translate(0, 0); }
+  }
+
+  /* e tende verso sinistra (verso la B) */
+  @keyframes clink-e {
+    0%, 55%, 100% { transform: rotate(0deg) translate(0,0); }
+    65%  { transform: rotate(-18deg) translate(-5px, -4px); }
+    70%  { transform: rotate(-16deg) translate(-4px, -3px); }
+    75%  { transform: rotate(4deg) translate(1px, 1px); }
+    80%  { transform: rotate(-8deg) translate(-2px, -1px); }
+    88%  { transform: rotate(2deg) translate(0, 0); }
+  }
+
+  .l-b { animation: clink-b 4.5s ease-in-out infinite; }
+  .l-e { animation: clink-e 4.5s ease-in-out infinite; }
+
+  /* ── BEER DRIP ── */
+  .drip-bar {
+    position: relative;
+    width: 300px;
+    height: 38px;
+    margin: 2px auto 0;
+    pointer-events: none;
+  }
+
+  /* Linea base da cui gocciolano le gocce */
+  .drip-bar::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 8%; right: 8%;
+    height: 2px;
+    background: linear-gradient(90deg,
+      transparent 0%, rgba(245,158,11,0.6) 15%,
+      rgba(245,158,11,0.8) 50%,
+      rgba(245,158,11,0.6) 85%, transparent 100%);
+    border-radius: 2px;
+  }
+
+  .drip {
+    position: absolute;
+    top: 1px;
+    width: 7px;
+    margin-left: -3.5px;
+    background: linear-gradient(to bottom, rgba(245,158,11,0.95), rgba(180,83,9,0.5));
+    border-radius: 0 0 50% 50%;
+    transform-origin: top center;
+    animation: drip-fall var(--dur, 2.2s) ease-in var(--delay, 0s) infinite;
+  }
+
+  @keyframes drip-fall {
+    0%          { height: 0;    opacity: 0;   transform: translateY(0); }
+    10%         { height: 2px;  opacity: 0.9; }
+    50%         { height: 20px; opacity: 1;   transform: translateY(0); }
+    70%         { height: 22px; opacity: 0.9; transform: translateY(0); }
+    82%         { height: 10px; opacity: 0.7; transform: translateY(14px); }
+    100%        { height: 2px;  opacity: 0;   transform: translateY(22px); }
   }
 
   /* ── HERO GLOW ── */
@@ -560,25 +594,21 @@
   <!-- HEADER -->
   <header style="position:relative; overflow:hidden;">
     <div class="hero-glow"></div>
-    <div class="logo">🍺 BeerFinder</div>
-    <p class="logo-sub">Offerte birra in tempo reale · supermercati italiani</p>
-  </header>
+    <div class="logo">🍺 <span class="l-b">B</span><span class="l-e">e</span>erFinder</div>
 
-  <!-- SEARCH BAR -->
-  <div class="search-section">
-    <label class="search-label" for="zone-input">Cerca per città o CAP</label>
-    <div class="search-row">
-      <div class="search-input-wrap">
-        <span class="search-icon">📍</span>
-        <input id="zone-input" type="text" placeholder="Es. Modena, Milano, 20121…"
-               autocomplete="off" spellcheck="false"
-               onkeydown="if(event.key==='Enter') doSearch()">
-      </div>
-      <button class="search-btn" id="search-btn" onclick="doSearch()">
-        Cerca offerte
-      </button>
+    <!-- Gocce di birra che colano sotto la scritta -->
+    <div class="drip-bar" aria-hidden="true">
+      <span class="drip" style="left:18%; --dur:2.0s; --delay:0.0s;"></span>
+      <span class="drip" style="left:29%; --dur:2.5s; --delay:0.6s;"></span>
+      <span class="drip" style="left:40%; --dur:1.9s; --delay:1.3s;"></span>
+      <span class="drip" style="left:50%; --dur:2.3s; --delay:0.3s;"></span>
+      <span class="drip" style="left:61%; --dur:2.1s; --delay:0.9s;"></span>
+      <span class="drip" style="left:72%; --dur:2.6s; --delay:0.1s;"></span>
+      <span class="drip" style="left:82%; --dur:1.8s; --delay:1.6s;"></span>
     </div>
-  </div>
+
+    <p class="logo-sub">SPINGERE SEMPRE · ARRENDERSI MAI</p>
+  </header>
 
   <!-- SCRAPING BANNER -->
   <div class="scraping-banner" id="scraping-banner">
@@ -645,8 +675,8 @@
       <!-- Initial state -->
       <div class="empty-state" style="grid-column:1/-1;">
         <div class="big-emoji">🍺</div>
-        <h3>Inserisci una città per iniziare</h3>
-        <p>Es. Modena, Milano, Roma, Bologna…</p>
+        <h3>Caricamento offerte in corso...</h3>
+        <p>Stiamo cercando le migliori birre in offerta a Modena.</p>
       </div>
     </div>
   </div>
@@ -663,7 +693,7 @@
 
 <script>
 // ──────────────────────────────────────────
-//  BUBBLE CANVAS
+//  BUBBLE CANVAS + ONDE
 // ──────────────────────────────────────────
 (function() {
   const canvas = document.getElementById('bubble-canvas');
@@ -676,20 +706,55 @@
   }
 
   function createBubble() {
+    const big = Math.random() < 0.18;
     return {
       x: Math.random() * canvas.width,
       y: canvas.height + 20,
-      r: 3 + Math.random() * 12,
-      vy: -(0.3 + Math.random() * 0.8),
-      vx: (Math.random() - 0.5) * 0.3,
-      opacity: 0.1 + Math.random() * 0.3,
-      color: Math.random() > 0.5 ? '#f59e0b' : '#d97706',
+      r: big ? 12 + Math.random() * 22 : 2 + Math.random() * 10,
+      vy: -(0.2 + Math.random() * 1.1),
+      vx: (Math.random() - 0.5) * 0.5,
+      opacity: big ? 0.08 + Math.random() * 0.14 : 0.15 + Math.random() * 0.4,
+      color: Math.random() > 0.4 ? '#f59e0b' : (Math.random() > 0.5 ? '#fbbf24' : '#d97706'),
     };
+  }
+
+  // Onde animate sul fondo (effetto birra nel bicchiere)
+  const WAVES = [
+    { yFrac: 0.78, amp: 32, freq: 0.006, spd: 0.14,  fill: 'rgba(245,158,11,0.13)' },
+    { yFrac: 0.84, amp: 24, freq: 0.010, spd: -0.10, fill: 'rgba(245,158,11,0.09)' },
+    { yFrac: 0.90, amp: 18, freq: 0.014, spd: 0.18,  fill: 'rgba(180,83,9,0.10)'  },
+    { yFrac: 0.95, amp: 12, freq: 0.009, spd: -0.08, fill: 'rgba(6,6,10,0.60)'    },
+  ];
+
+  function drawWaves(t) {
+    const W = canvas.width, H = canvas.height;
+    for (const w of WAVES) {
+      const baseY = H * w.yFrac;
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      ctx.lineTo(0, baseY + Math.sin(w.freq * 0 + t * w.spd * Math.PI * 2) * w.amp);
+      for (let x = 1; x <= W; x += 3) {
+        const y = baseY + Math.sin(w.freq * x + t * w.spd * Math.PI * 2) * w.amp;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fillStyle = w.fill;
+      ctx.fill();
+    }
   }
 
   function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (Math.random() < 0.08) bubbles.push(createBubble());
+
+    // Onde per prime (sotto le bolle)
+    drawWaves(Date.now() * 0.001);
+
+    // Spawn bolle (più frequente)
+    const n = Math.random() < 0.3 ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      if (Math.random() < 0.24) bubbles.push(createBubble());
+    }
     bubbles = bubbles.filter(b => b.y > -20);
     for (const b of bubbles) {
       b.y += b.vy;
@@ -698,9 +763,9 @@
       ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
       ctx.strokeStyle = b.color;
       ctx.globalAlpha = b.opacity;
-      ctx.lineWidth = 1;
+      ctx.lineWidth = 1.2;
       ctx.stroke();
-      ctx.globalAlpha = b.opacity * 0.15;
+      ctx.globalAlpha = b.opacity * 0.18;
       ctx.fillStyle = b.color;
       ctx.fill();
       ctx.globalAlpha = 1;
@@ -714,10 +779,49 @@
 })();
 
 // ──────────────────────────────────────────
+//  FOAM SPRAY (sincronizzato col clink 4.5s)
+// ──────────────────────────────────────────
+function spawnFoam() {
+  const lB = document.querySelector('.l-b');
+  const lE = document.querySelector('.l-e');
+  if (!lB || !lE) return;
+  const bR = lB.getBoundingClientRect();
+  const eR = lE.getBoundingClientRect();
+  const cx = (bR.right + eR.left) / 2;
+  const cy = (bR.top + bR.bottom) / 2;
+
+  const N = 16;
+  for (let i = 0; i < N; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'foam-dot';
+    const angle = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+    const speed = 18 + Math.random() * 45;
+    const dx = Math.cos(angle) * speed;
+    const dy = Math.sin(angle) * speed - 15; // leggera tendenza verso l'alto
+    const size = 3 + Math.random() * 6;
+    const isAmber = Math.random() > 0.5;
+    dot.style.cssText = `
+      left:${cx}px; top:${cy}px;
+      width:${size}px; height:${size}px;
+      background:${isAmber ? 'rgba(251,191,36,0.95)' : 'rgba(255,255,255,0.92)'};
+      --dx:${dx}px; --dy:${dy}px;
+    `;
+    document.body.appendChild(dot);
+    setTimeout(() => dot.remove(), 750);
+  }
+}
+
+// Il clink avviene al ~65% del ciclo da 4.5s → 2.925s dopo l'inizio
+setTimeout(function kick() {
+  spawnFoam();
+  setTimeout(kick, 4500);
+}, 2925);
+
+// ──────────────────────────────────────────
 //  STATE
 // ──────────────────────────────────────────
 let allOffers = [];
-let currentZone = '';
+const currentZone = 'modena';  // zona fissa
 let activeFilter = 'all';
 let activeMarkets = new Set();
 let pollingInterval = null;
@@ -725,13 +829,10 @@ let pollingInterval = null;
 // ──────────────────────────────────────────
 //  SEARCH
 // ──────────────────────────────────────────
+// Auto-carica Modena all'avvio
+document.addEventListener('DOMContentLoaded', () => doSearch());
+
 async function doSearch() {
-  const zone = document.getElementById('zone-input').value.trim();
-  if (!zone) {
-    showToast('📍 Inserisci una città o CAP', 'error');
-    return;
-  }
-  currentZone = zone.toLowerCase();
   activeMarkets.clear();
   setLoadingState(true);
   showSkeletons();
@@ -915,6 +1016,9 @@ function beerCard(o, idx) {
   const origPriceHtml = o.original_price
     ? `<span class="price-orig">${o.original_price.toFixed(2)}€</span>` : '';
 
+  const pplHtml = o.price_per_liter
+    ? `<span class="ppl-badge">€${o.price_per_liter.toFixed(2)}/L</span>` : '';
+
   const discHtml = o.discount_pct > 0
     ? `<span class="discount-tag">-${o.discount_pct}%</span>` : '';
 
@@ -963,6 +1067,7 @@ function beerCard(o, idx) {
       <div>
         <div class="price-sale">${o.sale_price.toFixed(2)}€</div>
         ${origPriceHtml}
+        ${pplHtml}
       </div>
       ${discHtml}
     </div>
@@ -1003,15 +1108,7 @@ function showEmpty(title, sub) {
 //  LOADING STATE
 // ──────────────────────────────────────────
 function setLoadingState(on) {
-  const btn = document.getElementById('search-btn');
-  if (on) {
-    btn.innerHTML = '<span class="spinner"></span>Carico…';
-    btn.classList.add('loading');
-    showSkeletons();
-  } else {
-    btn.innerHTML = 'Cerca offerte';
-    btn.classList.remove('loading');
-  }
+  if (on) showSkeletons();
 }
 
 // ──────────────────────────────────────────
