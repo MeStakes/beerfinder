@@ -80,11 +80,11 @@
     text-transform: uppercase;
   }
 
-  /* ── SEARCH BAR (rimossa — zona fissa: Modena) ── */
+  /* ── SEARCH BAR ── */
   .search-section {
-    display: none;
     max-width: 720px;
-    margin: 0 auto;
+    margin: 32px auto 0;
+    padding: 0 24px;
   }
 
   .search-label {
@@ -378,16 +378,34 @@
     margin-top:4px;
   }
 
+  .card-location {
+    font-size:0.75rem; color:var(--text-dim);
+    display:flex; align-items:center; gap:4px;
+    margin-top:3px;
+  }
+
+  .card-links {
+    display:flex; gap:8px; margin-top:10px;
+  }
+
+  .volantino-link, .maps-link {
+    flex:1; display:block;
+    text-align:center; font-size:0.78rem; font-weight:600;
+    text-decoration:none;
+    border-radius:8px;
+    padding:7px 4px; transition:background var(--transition), color var(--transition);
+    white-space:nowrap;
+  }
   .volantino-link {
-    display:block; margin-top:10px;
-    text-align:center; font-size:0.8rem; font-weight:600;
-    color:var(--amber); text-decoration:none;
-    border:1px solid rgba(245,158,11,0.35); border-radius:8px;
-    padding:6px 0; transition:background var(--transition), color var(--transition);
+    color:var(--amber);
+    border:1px solid rgba(245,158,11,0.35);
   }
-  .volantino-link:hover {
-    background:var(--amber-glow); color:var(--amber);
+  .volantino-link:hover { background:var(--amber-glow); }
+  .maps-link {
+    color:var(--green);
+    border:1px solid rgba(16,185,129,0.3);
   }
+  .maps-link:hover { background:var(--green-glow); }
 
   .validity-text {
     font-size:0.75rem; color:var(--text-dim);
@@ -543,10 +561,24 @@
   <header style="position:relative; overflow:hidden;">
     <div class="hero-glow"></div>
     <div class="logo">🍺 BeerFinder</div>
-    <p class="logo-sub">Offerte birra in tempo reale · supermercati di Modena</p>
+    <p class="logo-sub">Offerte birra in tempo reale · supermercati italiani</p>
   </header>
 
-  <!-- Zona fissa: Modena -->
+  <!-- SEARCH BAR -->
+  <div class="search-section">
+    <label class="search-label" for="zone-input">Cerca per città o CAP</label>
+    <div class="search-row">
+      <div class="search-input-wrap">
+        <span class="search-icon">📍</span>
+        <input id="zone-input" type="text" placeholder="Es. Modena, Milano, 20121…"
+               autocomplete="off" spellcheck="false"
+               onkeydown="if(event.key==='Enter') doSearch()">
+      </div>
+      <button class="search-btn" id="search-btn" onclick="doSearch()">
+        Cerca offerte
+      </button>
+    </div>
+  </div>
 
   <!-- SCRAPING BANNER -->
   <div class="scraping-banner" id="scraping-banner">
@@ -613,8 +645,8 @@
       <!-- Initial state -->
       <div class="empty-state" style="grid-column:1/-1;">
         <div class="big-emoji">🍺</div>
-        <h3>Caricamento offerte in corso...</h3>
-        <p>Stiamo cercando le migliori birre in offerta a Modena.</p>
+        <h3>Inserisci una città per iniziare</h3>
+        <p>Es. Modena, Milano, Roma, Bologna…</p>
       </div>
     </div>
   </div>
@@ -685,7 +717,7 @@
 //  STATE
 // ──────────────────────────────────────────
 let allOffers = [];
-const currentZone = 'modena';  // zona fissa
+let currentZone = '';
 let activeFilter = 'all';
 let activeMarkets = new Set();
 let pollingInterval = null;
@@ -693,10 +725,13 @@ let pollingInterval = null;
 // ──────────────────────────────────────────
 //  SEARCH
 // ──────────────────────────────────────────
-// Auto-carica Modena all'avvio
-document.addEventListener('DOMContentLoaded', () => doSearch());
-
 async function doSearch() {
+  const zone = document.getElementById('zone-input').value.trim();
+  if (!zone) {
+    showToast('📍 Inserisci una città o CAP', 'error');
+    return;
+  }
+  currentZone = zone.toLowerCase();
   activeMarkets.clear();
   setLoadingState(true);
   showSkeletons();
@@ -891,12 +926,31 @@ function beerCard(o, idx) {
   const dotColor = o.supermarket_meta?.color || '#6b7280';
   const marketName = o.supermarket_meta?.full_name || o.supermarket;
 
+  // URL Google Maps: cerca il supermercato nella città cercata → mostra filiali vicine
+  const mapsQuery = encodeURIComponent(`${marketName} ${o.zone}`);
+  const mapsUrl = `https://www.google.com/maps/search/${mapsQuery}`;
+
+  // Città in forma leggibile (prima lettera maiuscola)
+  const cityLabel = o.zone
+    ? o.zone.charAt(0).toUpperCase() + o.zone.slice(1)
+    : '';
+
+  // Pulsanti in fondo: volantino + Maps (sempre presenti se abbiamo la zona)
+  const linksHtml = (o.link_url || cityLabel) ? `
+    <div class="card-links">
+      ${o.link_url ? `<a class="volantino-link" href="${esc(o.link_url)}" target="_blank" rel="noopener noreferrer">Vedi offerta →</a>` : ''}
+      ${cityLabel ? `<a class="maps-link" href="${esc(mapsUrl)}" target="_blank" rel="noopener noreferrer">📍 Indicazioni</a>` : ''}
+    </div>` : '';
+
   return `
 <div class="beer-card${o.on_sale ? ' on-sale' : ''}" style="animation-delay:${delay}ms">
   <div class="card-header">
     <div class="supermarket-badge">
       <div class="supermarket-dot" style="background:${esc(dotColor)}"></div>
-      ${esc(marketName)}
+      <div>
+        ${esc(marketName)}
+        ${cityLabel ? `<div class="card-location">📍 ${esc(cityLabel)}</div>` : ''}
+      </div>
     </div>
     ${saleBadgeHtml}
   </div>
@@ -916,7 +970,7 @@ function beerCard(o, idx) {
       ${validity}
       <span class="source-tag">${esc(o.source)}</span>
     </div>
-    ${o.link_url ? `<a class="volantino-link" href="${esc(o.link_url)}" target="_blank" rel="noopener noreferrer">Vedi offerta →</a>` : ''}
+    ${linksHtml}
   </div>
 </div>`;
 }
@@ -949,8 +1003,15 @@ function showEmpty(title, sub) {
 //  LOADING STATE
 // ──────────────────────────────────────────
 function setLoadingState(on) {
-  // Nessun bottone di ricerca: mostra/nascondi skeleton
-  if (on) showSkeletons();
+  const btn = document.getElementById('search-btn');
+  if (on) {
+    btn.innerHTML = '<span class="spinner"></span>Carico…';
+    btn.classList.add('loading');
+    showSkeletons();
+  } else {
+    btn.innerHTML = 'Cerca offerte';
+    btn.classList.remove('loading');
+  }
 }
 
 // ──────────────────────────────────────────
