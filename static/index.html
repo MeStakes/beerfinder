@@ -1006,6 +1006,46 @@ function renderGrid(offers) {
   grid.innerHTML = offers.map((o, i) => beerCard(o, i)).join('');
 }
 
+function calcCardPricePerLiter(name, price) {
+  if (!name || !price) return null;
+  const text = name.toLowerCase();
+  let liters = null;
+  let match = text.match(/(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*cl\b/);
+  if (match) liters = parseInt(match[1], 10) * parseFloat(match[2].replace(',', '.')) / 100;
+
+  if (!liters) {
+    match = text.match(/(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*ml\b/);
+    if (match) liters = parseInt(match[1], 10) * parseFloat(match[2].replace(',', '.')) / 1000;
+  }
+
+  if (!liters) {
+    match = text.match(/(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*l\b/);
+    if (match) liters = parseInt(match[1], 10) * parseFloat(match[2].replace(',', '.'));
+  }
+
+  if (!liters) {
+    match = text.match(/\b(\d+(?:[.,]\d+)?)\s*cl\b/);
+    if (match) liters = parseFloat(match[1].replace(',', '.')) / 100;
+  }
+
+  if (!liters) {
+    match = text.match(/\b(\d+(?:[.,]\d+)?)\s*ml\b/);
+    if (match) liters = parseFloat(match[1].replace(',', '.')) / 1000;
+  }
+
+  if (!liters) {
+    match = text.match(/\b(\d+(?:[.,]\d+)?)\s*l\b/);
+    if (match) {
+      const value = parseFloat(match[1].replace(',', '.'));
+      if (value >= 0.1 && value <= 50) liters = value;
+    }
+  }
+
+  if (!liters || liters <= 0) return null;
+  const pricePerLiter = price / liters;
+  return pricePerLiter >= 0.3 && pricePerLiter <= 20 ? pricePerLiter : null;
+}
+
 function beerCard(o, idx) {
   const delay = Math.min(idx * 40, 400);
   const hasImage = o.image_url && o.image_url.startsWith('http');
@@ -1016,8 +1056,9 @@ function beerCard(o, idx) {
   const origPriceHtml = o.original_price
     ? `<span class="price-orig">${o.original_price.toFixed(2)}€</span>` : '';
 
-  const pplHtml = o.price_per_liter
-    ? `<span class="ppl-badge">€${o.price_per_liter.toFixed(2)}/L</span>` : '';
+  const pricePerLiter = o.price_per_liter || calcCardPricePerLiter(o.name, o.sale_price);
+  const pplHtml = pricePerLiter
+    ? `<span class="ppl-badge">${pricePerLiter.toFixed(2)}€/L</span>` : '';
 
   const discHtml = o.discount_pct > 0
     ? `<span class="discount-tag">-${o.discount_pct}%</span>` : '';
