@@ -37,6 +37,7 @@
     color: var(--text);
     min-height: 100vh;
     overflow-x: hidden;
+    scroll-behavior: smooth;
   }
 
   /* ── Canvas bolle ── */
@@ -54,11 +55,25 @@
 
   .wrapper { position:relative; z-index:2; }
 
+  .scroll-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: calc(var(--scroll-progress, 0) * 100%);
+    height: 3px;
+    z-index: 1200;
+    background: linear-gradient(90deg, #fbbf24, #f59e0b, #10b981);
+    box-shadow: 0 0 18px rgba(245,158,11,0.55);
+    transition: width 0.1s linear;
+  }
+
   /* ── HEADER ── */
   header {
     text-align:center; padding:60px 24px 40px;
     background: linear-gradient(180deg, rgba(245,158,11,0.08) 0%, transparent 100%);
     border-bottom: 1px solid var(--border);
+    transform: translateY(calc(var(--scroll-y, 0px) * -0.08));
+    will-change: transform;
   }
 
   .logo {
@@ -373,6 +388,17 @@
     opacity:0.7;
   }
 
+  .beer-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(circle at 20% 0%, rgba(255,255,255,0.08), transparent 40%);
+    mix-blend-mode: screen;
+    opacity: 0.5;
+  }
+
   /* ── SKELETON ── */
   .skeleton {
     background:var(--card); border:1px solid var(--border);
@@ -550,6 +576,40 @@
     width:600px; height:300px;
     background:radial-gradient(ellipse, rgba(245,158,11,0.12) 0%, transparent 70%);
     pointer-events:none; z-index:0;
+    filter: blur(calc(var(--scroll-progress, 0) * 4px));
+  }
+
+  .hero-ring {
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    width: min(72vw, 520px);
+    height: min(72vw, 520px);
+    border-radius: 50%;
+    border: 1px solid rgba(245,158,11,0.17);
+    transform: translateX(-50%) rotate(calc(var(--scroll-progress, 0) * 80deg));
+    box-shadow: inset 0 0 40px rgba(245,158,11,0.08), 0 0 80px rgba(245,158,11,0.10);
+    pointer-events: none;
+    z-index: -1;
+    animation: ring-breathe 5s ease-in-out infinite;
+  }
+
+  @keyframes ring-breathe {
+    0%, 100% { transform: translateX(-50%) scale(1) rotate(calc(var(--scroll-progress, 0) * 80deg)); opacity: 0.6; }
+    50% { transform: translateX(-50%) scale(1.08) rotate(calc(var(--scroll-progress, 0) * 80deg)); opacity: 0.95; }
+  }
+
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(34px) scale(0.985);
+    transition: opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1), transform 0.65s cubic-bezier(0.16, 1, 0.3, 1);
+    transition-delay: var(--reveal-delay, 0ms);
+    will-change: transform, opacity;
+  }
+
+  [data-reveal].is-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 
   /* ── SECTION TITLE ── */
@@ -583,17 +643,44 @@
     display:flex; align-items:center; gap:10px;
     font-size:0.88rem; color:var(--text-sub);
   }
+
+  .beer-motto {
+    max-width: 1400px;
+    margin: 8px auto 0;
+    padding: 0 24px;
+    color: var(--text-sub);
+    font-size: 0.82rem;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    opacity: 0.9;
+    animation: motto-float 4s ease-in-out infinite;
+  }
+
+  @keyframes motto-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
 </style>
 </head>
 <body>
 
 <canvas id="bubble-canvas"></canvas>
+<div class="scroll-progress" aria-hidden="true"></div>
 
 <div class="wrapper">
 
   <!-- HEADER -->
-  <header style="position:relative; overflow:hidden;">
+  <header style="position:relative; overflow:hidden;" data-reveal>
     <div class="hero-glow"></div>
+    <div class="hero-ring" aria-hidden="true"></div>
     <div class="logo">🍺 <span class="l-b">B</span><span class="l-e">e</span>erFinder</div>
 
     <!-- Gocce di birra che colano sotto la scritta -->
@@ -617,9 +704,10 @@
       Sto scansionando i volantini e i siti dei supermercati… attendere qualche secondo.
     </div>
   </div>
+  <div class="beer-motto" data-reveal style="--reveal-delay:120ms;">Birra, hype, offerte e gloria da frigo pieno.</div>
 
   <!-- STATS BAR -->
-  <div class="stats-bar" id="stats-bar">
+  <div class="stats-bar" id="stats-bar" data-reveal style="--reveal-delay:80ms;">
     <div class="stat-pill">
       <div class="pulse"></div>
       <span>Aggiornato ora</span>
@@ -643,7 +731,7 @@
   </div>
 
   <!-- FILTER BAR -->
-  <div class="filter-section" id="filter-section">
+  <div class="filter-section" id="filter-section" data-reveal style="--reveal-delay:140ms;">
     <span class="filter-label">Filtra:</span>
     <div class="filter-chips" id="filter-chips">
       <button class="chip active" onclick="setFilter('all', this)">Tutti</button>
@@ -666,8 +754,8 @@
   <div class="glow-sep" style="margin-top:24px;"></div>
 
   <!-- GRID -->
-  <div class="grid-section">
-    <div class="section-title" id="section-title" style="display:none;">
+  <div class="grid-section" data-reveal style="--reveal-delay:180ms;">
+    <div class="section-title" id="section-title" data-reveal style="display:none; --reveal-delay:220ms;">
       <h2>Risultati</h2>
       <span class="results-count">Trovate <strong id="results-count-num">0</strong> birre</span>
     </div>
@@ -681,7 +769,7 @@
     </div>
   </div>
 
-  <footer>
+  <footer data-reveal style="--reveal-delay:130ms;">
     <p>BeerFinder &copy; 2025 · Dati aggregati da volantini e siti supermercati ·
     <a href="#">robots.txt respected</a> · Aggiornamento manuale</p>
   </footer>
@@ -830,7 +918,10 @@ let pollingInterval = null;
 //  SEARCH
 // ──────────────────────────────────────────
 // Auto-carica Modena all'avvio
-document.addEventListener('DOMContentLoaded', () => doSearch());
+document.addEventListener('DOMContentLoaded', () => {
+  doSearch();
+  initScrollFx();
+});
 
 async function doSearch() {
   activeMarkets.clear();
@@ -1004,6 +1095,7 @@ function renderGrid(offers) {
   }
 
   grid.innerHTML = offers.map((o, i) => beerCard(o, i)).join('');
+  observeRevealNodes(grid.querySelectorAll('[data-reveal]'));
 }
 
 function calcCardPricePerLiter(name, price) {
@@ -1088,7 +1180,7 @@ function beerCard(o, idx) {
     </div>` : '';
 
   return `
-<div class="beer-card${o.on_sale ? ' on-sale' : ''}" style="animation-delay:${delay}ms">
+<div class="beer-card${o.on_sale ? ' on-sale' : ''}" data-reveal style="animation-delay:${delay}ms; --reveal-delay:${Math.min(idx * 35, 300)}ms;">
   <div class="card-header">
     <div class="supermarket-badge">
       <div class="supermarket-dot" style="background:${esc(dotColor)}"></div>
@@ -1176,6 +1268,51 @@ function esc(s) {
     .replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;');
 }
+
+// ──────────────────────────────────────────
+//  SCROLL FX + REVEAL
+// ──────────────────────────────────────────
+let revealObserver = null;
+
+function initScrollFx() {
+  let rafTicking = false;
+  const onScroll = () => {
+    if (rafTicking) return;
+    rafTicking = true;
+    requestAnimationFrame(() => {
+      const maxScroll = Math.max(document.body.scrollHeight - window.innerHeight, 1);
+      const current = window.scrollY || window.pageYOffset || 0;
+      const progress = Math.min(Math.max(current / maxScroll, 0), 1);
+      document.documentElement.style.setProperty('--scroll-y', `${current}px`);
+      document.documentElement.style.setProperty('--scroll-progress', progress.toFixed(4));
+      rafTicking = false;
+    });
+  };
+
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  onScroll();
+
+  revealObserver = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        revealObserver.unobserve(entry.target);
+      }
+    }
+  }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+
+  observeRevealNodes(document.querySelectorAll('[data-reveal]'));
+}
+
+function observeRevealNodes(nodes) {
+  if (!revealObserver) return;
+  nodes.forEach((node) => {
+    if (node.classList.contains('is-visible')) return;
+    revealObserver.observe(node);
+  });
+}
+
 </script>
 </body>
 </html>
