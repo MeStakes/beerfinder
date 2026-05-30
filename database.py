@@ -90,3 +90,39 @@ async def get_cache_info(zone: str) -> dict:
                     "scraped_at": int(row[0])
                 }
     return {"cached": False, "age_seconds": 0, "expires_in": 0, "scraped_at": 0}
+
+
+async def get_sources_health(zone: Optional[str] = None) -> list:
+    """Stato di salute di ogni fonte di scraping, ricavato da scrape_log.
+    Per ciascuna source restituisce l'ultimo tentativo e l'ultimo successo.
+    Se 'zone' è passata, filtra solo i log di quella zona."""
+    where = "WHERE zone = ?" if zone else ""
+    params = (zone.lower(),) if zone else ()
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            f"SELECT source, status, items_found, timestamp, error "
+            f"FROM scrape_log {where} ORDER BY timestamp DESC",
+            params
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+    # Aggrega in Python: righe già ordinate per timestamp DESC, quindi
+    # il primo record di ogni source = ultimo tentativo; il primo "ok" = ultimo successo.
+    sources: dict = {}
+    for source, status, items, ts, error in rows:
+        if source not in sources:
+            sources[source] = {
+                "source": source,
+                "last_status": status,
+                "last_items": items,
+                "last_attempt": int(ts),
+                "last_error": error,
+                "last_success": None,
+                "last_success_items": 0,
+                # Sana = ULTIMO tentativo andato a buon fine con almeno 1 offerta
+                "healthy": status == "ok" and (items or 0) > 0,
+            }
+        if status == "ok" and sources[source]["last_success"] is None:
+            sources[source]["last_success"] = int(ts)
+            sources[source]["last_success_items"] = items
+    return sorted(sources.values(), key=lambda x: -x["last_attempt"])

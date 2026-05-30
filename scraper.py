@@ -50,6 +50,40 @@ BEER_KEYWORDS = [
     "spaten", "paulaner", "erdinger", "franziskaner", "warsteiner",
 ]
 
+# ── Lookup volume singolo (litri) per brand/SKU birra italiani noti ──
+# Usato quando il titolo NON contiene un formato esplicito né una parola-contenitore.
+# Chiave = sottostringa cercata nel titolo (lowercase); la chiave più lunga vince.
+BEER_VOLUME_LOOKUP = {
+    # Lattine / bottigliette standard 33cl
+    "ceres": 0.33, "corona": 0.33, "desperados": 0.33,
+    "leffe": 0.33, "hoegaarden": 0.33, "chouffe": 0.33, "duvel": 0.33,
+    "bud": 0.33, "budweiser": 0.33,
+    # 50cl
+    "ichnusa": 0.50, "messina": 0.50, "kozel": 0.50, "warsteiner": 0.50,
+    "paulaner": 0.50, "erdinger": 0.50, "franziskaner": 0.50,
+    "weihenstephan": 0.50, "kaiserdom": 0.50,
+    "8.6": 0.50, "8,6": 0.50, "86 original": 0.50,
+    "guinness": 0.44,
+    # Bottiglia 66cl (formato volantino tipico al pezzo)
+    "nastro azzurro": 0.66, "peroni": 0.66, "moretti": 0.66,
+    "menabrea": 0.66, "forst": 0.66, "raffo": 0.66, "dreher": 0.66,
+    "heineken": 0.66, "tuborg": 0.66, "bavaria": 0.66,
+    "angelo poretti": 0.66, "castello": 0.66,
+}
+
+# Parole-contenitore nel titolo → volume singolo di default (litri)
+CONTAINER_DEFAULTS = [
+    (r'\blattin', 0.33),     # lattina / lattine → 33cl
+    (r'\bcan\b', 0.33),
+    (r'\bbottigli', 0.66),   # bottiglia / bottiglie → 66cl
+    (r'\bfusto\b', 5.0),     # fusto → 5L
+    (r'\bkeg\b', 5.0),
+]
+
+# Default generico: se è chiaramente una birra ma manca ogni altro segnale,
+# si assume il formato bottiglia 66cl, il più comune nei volantini italiani.
+GENERIC_BEER_DEFAULT = 0.66
+
 # Lista di user-agent reali da ruotare per sembrare un browser normale
 USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
@@ -93,54 +127,84 @@ def extract_price(text: str) -> Optional[float]:
     return None
 
 
-def calc_price_per_liter(name: str, price: float) -> Optional[float]:
-    """Calcola il prezzo al litro dal nome del prodotto.
-    Gestisce formati comuni: 6x33cl, 24x33cl, 4x50cl, 66cl, 1.5L, 330ml ecc."""
-    if not name or not price:
-        return None
-    n = name.lower()
-    liters = None
-
+def _liters_from_explicit_format(n: str) -> Optional[float]:
+    """Estrae i litri da un formato VOLUME ESPLICITO nel testo
+    (NxVOL, VOL cl/ml/l/lt). Restituisce None se nessun formato esplicito."""
     # N x VOL cl  →  es. "6x33cl", "24 x 33 cl"
     m = re.search(r'(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*cl\b', n)
     if m:
-        liters = int(m.group(1)) * float(m.group(2).replace(',', '.')) / 100
-
+        return int(m.group(1)) * float(m.group(2).replace(',', '.')) / 100
     # N x VOL ml  →  es. "6x330ml"
-    if not liters:
-        m = re.search(r'(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*ml\b', n)
-        if m:
-            liters = int(m.group(1)) * float(m.group(2).replace(',', '.')) / 1000
+    m = re.search(r'(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*ml\b', n)
+    if m:
+        return int(m.group(1)) * float(m.group(2).replace(',', '.')) / 1000
+    # N x VOL l/lt  →  es. "4x1l", "6x0.5lt"
+    m = re.search(r'(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*l(?:t)?\b', n)
+    if m:
+        return int(m.group(1)) * float(m.group(2).replace(',', '.'))
+    # VOL cl singolo  →  es. "66cl", "33cl"
+    m = re.search(r'\b(\d+(?:[.,]\d+)?)\s*cl\b', n)
+    if m:
+        return float(m.group(1).replace(',', '.')) / 100
+    # VOL ml singolo  →  es. "330ml", "500ml"
+    m = re.search(r'\b(\d+(?:[.,]\d+)?)\s*ml\b', n)
+    if m:
+        return float(m.group(1).replace(',', '.')) / 1000
+    # VOL l/lt singolo  →  es. "1l", "1.5l", "2lt"
+    m = re.search(r'\b(\d+(?:[.,]\d+)?)\s*l(?:t)?\b', n)
+    if m:
+        v = float(m.group(1).replace(',', '.'))
+        if 0.1 <= v <= 50:
+            return v
+    return None
 
-    # N x VOL l  →  es. "4x1l", "6x0.5l"
-    if not liters:
-        m = re.search(r'(\d+)\s*[x×]\s*(\d+(?:[.,]\d+)?)\s*l\b', n)
-        if m:
-            liters = int(m.group(1)) * float(m.group(2).replace(',', '.'))
 
-    # VOL cl singolo  →  es. "66cl", "33cl", "50cl"
-    if not liters:
-        m = re.search(r'\b(\d+(?:[.,]\d+)?)\s*cl\b', n)
-        if m:
-            liters = float(m.group(1).replace(',', '.')) / 100
+def infer_liters(name: str) -> Optional[float]:
+    """Inferisce il volume (litri) di un'offerta birra dal nome.
+    Priorità: 1) formato esplicito, 2) parola-contenitore, 3) lookup brand,
+    4) default generico birra (bottiglia 66cl). Restituisce litri o None.
+    Necessario perché promoqui.it espone titoli senza formato (es. 'Peroni - Birra')."""
+    if not name:
+        return None
+    n = name.lower()
 
-    # VOL ml singolo  →  es. "330ml", "500ml", "660ml"
-    if not liters:
-        m = re.search(r'\b(\d+(?:[.,]\d+)?)\s*ml\b', n)
-        if m:
-            liters = float(m.group(1).replace(',', '.')) / 1000
+    # 1) Formato esplicito nel titolo (es. "6x33cl", "66cl", "1,5l")
+    liters = _liters_from_explicit_format(n)
+    if liters:
+        return liters
 
-    # VOL l singolo  →  es. "1l", "1.5l", "0.5l"
-    if not liters:
-        m = re.search(r'\b(\d+(?:[.,]\d+)?)\s*l\b', n)
-        if m:
-            v = float(m.group(1).replace(',', '.'))
-            if 0.1 <= v <= 50:
-                liters = v
+    # 2) Parola-contenitore (lattina / bottiglia / fusto)
+    for pat, vol in CONTAINER_DEFAULTS:
+        if re.search(pat, n):
+            return vol
 
+    # 3) Lookup brand/SKU noto (la sottostringa più lunga vince)
+    best = None
+    for key, vol in BEER_VOLUME_LOOKUP.items():
+        if key in n and (best is None or len(key) > best[0]):
+            best = (len(key), vol)
+    if best:
+        return best[1]
+
+    # 4) Default generico: birra senza altro segnale → bottiglia 66cl
+    if is_beer(n):
+        return GENERIC_BEER_DEFAULT
+
+    return None
+
+
+def calc_price_per_liter(name: str, price: float) -> Optional[float]:
+    """Calcola il prezzo al litro dell'offerta.
+    Estrae il volume dal nome (formato esplicito, contenitore, brand noto,
+    o default birra) e divide il prezzo per i litri. Restituisce €/L o None.
+    NB: il prezzo promoqui è quasi sempre per singolo pezzo; il sanity-cap
+    scarta i casi in cui un prezzo multipack senza token formato sfori il range."""
+    if not name or not price:
+        return None
+    liters = infer_liters(name)
     if liters and liters > 0:
         ppl = round(price / liters, 2)
-        # Sanity check: birra italiana tipicamente 0.50–15 €/L
+        # Sanity check: birra italiana tipicamente 0.30–20 €/L
         if 0.30 <= ppl <= 20:
             return ppl
     return None
@@ -430,65 +494,112 @@ async def scrape_promoqui(client: httpx.AsyncClient, zone: str) -> list:
 # SORGENTE 2: tiendeo.it (__NEXT_DATA__ JSON)
 # ============================================================
 async def scrape_tiendeo(client: httpx.AsyncClient, zone: str) -> list:
-    """Scrapa offerte birra da tiendeo.it usando __NEXT_DATA__ embedded nel HTML.
-    Tiendeo è un aggregatore internazionale di volantini supermercati, presente in Italia."""
+    """Scrapa offerte birra da tiendeo.it usando __NEXT_DATA__ embedded nell'HTML.
+    Tiendeo è un aggregatore internazionale di volantini supermercati, presente in Italia.
+    I prodotti vivono in apiResources.offersTable.flyerGibs e apiResources.flyerGibsData.flyerGibs:
+    ogni 'flyerGib' ha title, retailerName, image e settings.{price, starting_price, sale} con
+    prezzi come STRINGHE (es. '€ 1.09') — per questo il vecchio parser title+price numerico falliva."""
     offers = []
-    # Tiendeo ha pagine per categoria — cerchiamo birra in Italia
+
+    def _price(d) -> float:
+        # Estrae un float da settings.price_extended/starting_price ('digits' è una stringa)
+        if isinstance(d, dict):
+            digits = d.get("digits")
+            if isinstance(digits, str) and digits.strip():
+                try:
+                    return float(digits.replace(",", "."))
+                except ValueError:
+                    pass
+        return 0.0
+
+    # URL corretto: la vecchia /ricerca?query= redirige alla home, /cat e /Modena danno 404.
+    # /Offerte/birra è la pagina categoria-prodotto nazionale (pageType PRODUCTCATEGORY_NATIONAL).
     urls_to_try = [
-        "https://www.tiendeo.it/ricerca?query=birra",
-        f"https://www.tiendeo.it/Modena/supermercati/offerte-birra",
-        "https://www.tiendeo.it/cat/birra",
+        "https://www.tiendeo.it/Offerte/birra",
+        "https://www.tiendeo.it/search?q=birra",
     ]
-    for url in urls_to_try:
-        try:
-            resp = await client.get(url, headers=get_headers(), timeout=15, follow_redirects=True)
+    try:
+        seen_ids = set()
+        for url in urls_to_try:
+            try:
+                resp = await client.get(url, headers=get_headers(), timeout=15, follow_redirects=True)
+            except Exception:
+                continue
             if resp.status_code != 200:
                 continue
 
             html = resp.text
-            json_items = _extract_next_data(html)
-
-            if not json_items:
+            m = re.search(r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>(.*?)</script>', html, re.DOTALL)
+            if not m:
+                continue
+            try:
+                data = _json.loads(m.group(1))
+            except Exception:
                 continue
 
-            for item in json_items:
-                title = (item.get("title") or item.get("name") or "").strip()
+            api = (data.get("props", {}) or {}).get("pageProps", {}).get("apiResources", {}) or {}
+            gibs = []
+            for container in ("offersTable", "flyerGibsData"):
+                block = api.get(container)
+                if isinstance(block, dict) and isinstance(block.get("flyerGibs"), list):
+                    gibs.extend(block["flyerGibs"])
+
+            for item in gibs:
+                if not isinstance(item, dict):
+                    continue
+                title = (item.get("title") or "").strip()
                 if not title or not is_beer(title):
                     continue
 
-                sale_price = item.get("price") or item.get("salePrice")
-                if not isinstance(sale_price, (int, float)) or sale_price <= 0:
+                settings = item.get("settings", {})
+                if not isinstance(settings, dict):
+                    settings = {}
+
+                sale_price = _price(settings.get("price_extended"))
+                if sale_price <= 0:
                     continue
 
-                original_price = item.get("original_price") or item.get("originalPrice") or item.get("regularPrice")
-                if original_price and not isinstance(original_price, (int, float)):
+                original_price = _price(settings.get("starting_price"))
+                if original_price <= sale_price:
                     original_price = None
 
-                discount_pct = calc_discount(original_price, sale_price) if original_price else 0
+                # Sconto: usa il campo 'discount' (negativo, es. -30) o calcola dai prezzi
+                discount_pct = 0
+                raw_disc = item.get("discount")
+                if isinstance(raw_disc, (int, float)) and raw_disc:
+                    discount_pct = abs(int(raw_disc))
+                elif original_price:
+                    discount_pct = calc_discount(original_price, sale_price)
+                # Ricostruisci l'originale se manca starting_price ma c'è uno sconto
+                if original_price is None and discount_pct > 0:
+                    original_price = round(sale_price / (1 - discount_pct / 100), 2)
 
-                supermarket = ""
-                for field in ("retailer", "shop", "store", "brand", "chain"):
-                    v = item.get(field, "")
-                    if isinstance(v, dict):
-                        supermarket = v.get("name", "") or v.get("title", "")
-                    elif isinstance(v, str):
-                        supermarket = v
-                    if supermarket:
-                        break
-                if not supermarket:
-                    supermarket = "Supermercato"
+                offer_id = item.get("id") or hash(title + str(sale_price))
+                if offer_id in seen_ids:
+                    continue
+                seen_ids.add(offer_id)
 
-                img_url = item.get("image", "") or item.get("imageUrl", "") or item.get("thumbnail", "")
-                if isinstance(img_url, str) and not img_url.startswith("http") and img_url:
+                supermarket = (item.get("retailerName") or settings.get("brand") or "Supermercato").strip()
+
+                img_url = item.get("image") or settings.get("image_url") or item.get("retailerLogo") or ""
+                if isinstance(img_url, str) and img_url and not img_url.startswith("http"):
                     img_url = f"https://www.tiendeo.it{img_url}"
+                else:
+                    img_url = img_url if isinstance(img_url, str) else ""
 
-                item_url = item.get("url", "") or item.get("link", "")
+                item_url = item.get("href") or ""
                 link_url = ""
-                if isinstance(item_url, str):
+                if isinstance(item_url, str) and item_url:
                     link_url = item_url if item_url.startswith("http") else f"https://www.tiendeo.it{item_url}"
 
+                # Validità dalla data di fine del volantino
+                validity = ""
+                flyer = item.get("flyer", {})
+                if isinstance(flyer, dict) and flyer.get("end_date"):
+                    validity = f"Fino al {flyer['end_date']}"
+
                 offers.append({
-                    "id": f"tiendeo_{item.get('id', hash(title + supermarket))}",
+                    "id": f"tiendeo_{offer_id}",
                     "name": title,
                     "supermarket": supermarket,
                     "supermarket_meta": get_supermarket_meta(supermarket),
@@ -497,7 +608,7 @@ async def scrape_tiendeo(client: httpx.AsyncClient, zone: str) -> list:
                     "discount_pct": discount_pct,
                     "on_sale": discount_pct > 0,
                     "image_url": img_url,
-                    "validity": "",
+                    "validity": validity,
                     "link_url": link_url,
                     "price_per_liter": calc_price_per_liter(title, float(sale_price)),
                     "source": "tiendeo.it",
@@ -507,18 +618,19 @@ async def scrape_tiendeo(client: httpx.AsyncClient, zone: str) -> list:
             if offers:
                 break  # se un URL ha funzionato, non proviamo gli altri
 
-        except Exception:
-            continue
-
-    try:
         await log_scrape(zone, "tiendeo", "ok", len(offers))
-    except Exception:
-        pass
+
+    except Exception as e:
+        try:
+            await log_scrape(zone, "tiendeo", "error", 0, str(e))
+        except Exception:
+            pass
     return offers
 
 
 # ============================================================
-# SORGENTE 3: volantino.it
+# SORGENTE 3: volantino.it  — DISMESSA (dominio ora print-shop SumUp, niente volantini)
+# Funzione mantenuta come riferimento ma NON più chiamata da scrape_all().
 # ============================================================
 async def scrape_volantino(client: httpx.AsyncClient, zone: str) -> list:
     """Scrapa offerte birra da volantino.it, prima con __NEXT_DATA__ poi con CSS."""
@@ -614,7 +726,8 @@ async def scrape_volantino(client: httpx.AsyncClient, zone: str) -> list:
 
 
 # ============================================================
-# SORGENTE 4: offerte.it
+# SORGENTE 4: offerte.it  — DISMESSA (dominio parcheggiato in vendita su Sedo)
+# Funzione mantenuta come riferimento ma NON più chiamata da scrape_all().
 # ============================================================
 async def scrape_offerte(client: httpx.AsyncClient, zone: str) -> list:
     """Scrapa offerte birra da offerte.it, prima con __NEXT_DATA__ poi con CSS."""
@@ -754,11 +867,12 @@ async def scrape_all(zone: str) -> list:
         limits=httpx.Limits(max_connections=8),
         timeout=httpx.Timeout(20.0)
     ) as client:
+        # NB: volantino.it e offerte.it rimossi — domini non più attivi come aggregatori
+        # volantini (volantino.it = print-shop SumUp, offerte.it = dominio parcheggiato su Sedo).
+        # Fonti attive: promoqui.it + tiendeo.it. Le funzioni dismesse restano sotto come riferimento.
         results = await asyncio.gather(
             scrape_promoqui(client, zone),
             scrape_tiendeo(client, zone),
-            scrape_volantino(client, zone),
-            scrape_offerte(client, zone),
             return_exceptions=True
         )
 

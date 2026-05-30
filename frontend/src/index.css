@@ -1,0 +1,164 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   BeerFinder — design system "Liquid Gold"
+   Nero espresso + oro/ambra fuso, vetro, bagliore caldo.
+   ============================================================ */
+
+@layer base {
+  :root,
+  .dark {
+    --background: 28 30% 4%;
+    --foreground: 36 33% 92%;
+
+    --card: 30 26% 6.5%;
+    --card-foreground: 36 33% 92%;
+    --popover: 30 28% 5%;
+    --popover-foreground: 36 33% 92%;
+
+    --primary: 40 92% 56%;
+    --primary-foreground: 30 45% 8%;
+
+    --secondary: 30 16% 13%;
+    --secondary-foreground: 36 25% 88%;
+
+    --muted: 30 14% 12%;
+    --muted-foreground: 36 12% 60%;
+
+    --accent: 33 90% 52%;
+    --accent-foreground: 30 45% 8%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 36 33% 95%;
+
+    --border: 34 20% 14%;
+    --input: 34 20% 15%;
+    --ring: 40 92% 56%;
+
+    /* Accenti del brand */
+    --gold: 40 92% 58%;
+    --amber: 32 95% 52%;
+    --froth: 42 60% 90%;
+    --deal: 152 58% 46%;
+
+    --radius: 1rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: 'ss01', 'cv01';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+    min-height: 100svh;
+  }
+
+  /* Atmosfera: bagliore caldo in alto + secondario in basso */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background:
+      radial-gradient(62% 48% at 78% -5%, hsl(40 92% 56% / 0.12), transparent 70%),
+      radial-gradient(48% 42% at 8% 8%, hsl(32 95% 52% / 0.07), transparent 70%),
+      radial-gradient(70% 60% at 50% 110%, hsl(28 60% 18% / 0.25), transparent 75%),
+      hsl(var(--background));
+  }
+
+  /* Grana sottile su tutto */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.045;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  ::selection {
+    background: hsl(var(--gold) / 0.28);
+    color: hsl(var(--froth));
+  }
+
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(34 18% 16%);
+    border-radius: 99px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(40 55% 30%);
+  }
+}
+
+@layer components {
+  /* Superficie in vetro smerigliato */
+  .glass {
+    background: linear-gradient(
+      180deg,
+      hsl(38 22% 13% / 0.55),
+      hsl(28 26% 7% / 0.6)
+    );
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid hsl(40 40% 72% / 0.08);
+  }
+
+  /* Testo con gradiente oro fuso */
+  .text-gold-gradient {
+    background: linear-gradient(
+      180deg,
+      hsl(42 85% 92%),
+      hsl(40 92% 58%) 58%,
+      hsl(32 88% 44%)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Riga/divisore ambra */
+  .rule-gold {
+    height: 2px;
+    background: linear-gradient(
+      90deg,
+      hsl(var(--gold)),
+      hsl(var(--amber)),
+      transparent
+    );
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .text-pretty {
+    text-wrap: pretty;
+  }
+  /* Numeri tabellari per i prezzi */
+  .nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+}

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fcd34d"/>
+      <stop offset="0.6" stop-color="#f5b62c"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="#0a0806"/>
+  <!-- manico -->
+  <rect x="20" y="11" width="6" height="12" rx="3" fill="none" stroke="url(#g)" stroke-width="2.4"/>
+  <!-- boccale -->
+  <rect x="7" y="9" width="13" height="16" rx="2.4" fill="url(#g)"/>
+  <!-- schiuma -->
+  <circle cx="9.5" cy="9" r="2.6" fill="#fde9b8"/>
+  <circle cx="13.5" cy="7.6" r="2.9" fill="#fde9b8"/>
+  <circle cx="17.6" cy="9" r="2.6" fill="#fde9b8"/>
+</svg>

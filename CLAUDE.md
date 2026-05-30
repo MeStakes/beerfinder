@@ -8,7 +8,8 @@
 
 **BeerFinder** è un'applicazione web full-stack Python che aggrega offerte birra dai supermercati italiani tramite scraping, le memorizza in SQLite e le espone tramite una SPA dark ultra-moderna.
 
-Stack: `FastAPI` + `BeautifulSoup4` + `httpx` (async) + `aiosqlite` + HTML/CSS/JS vanilla.
+Stack backend: `FastAPI` + `BeautifulSoup4` + `httpx` (async) + `aiosqlite`.
+Stack frontend: SPA **React 19 + Vite + TypeScript + Tailwind + shadcn/ui** (in `frontend/`), buildata e servita da FastAPI. Design system dark "Liquid Gold" (oro/ambra su nero espresso, hero 3D + spotlight).
 
 ---
 
@@ -16,13 +17,15 @@ Stack: `FastAPI` + `BeautifulSoup4` + `httpx` (async) + `aiosqlite` + HTML/CSS/J
 
 | File | Ruolo | Toccare quando… |
 |---|---|---|
-| `main.py` | FastAPI app, route API, serving static | aggiungi endpoint, cambi CORS, modifichi la logica di cache |
+| `main.py` | FastAPI app, route API, serve la build React (`frontend/dist`) | aggiungi endpoint, cambi CORS/serving, modifichi cache |
 | `scraper.py` | Scraper asincrono multi-sorgente | aggiungi fonti, sistemi parsing HTML, cambi keyword birra |
-| `database.py` | CRUD SQLite asincrono + TTL cache | cambi TTL, aggiungi tabelle, modifichi schema |
-| `static/index.html` | SPA completa (HTML+CSS+JS in un file) | cambi UI, aggiungi filtri, modifichi grafica |
+| `database.py` | CRUD SQLite asincrono + TTL cache + health fonti | cambi TTL, aggiungi tabelle, modifichi schema |
+| `frontend/` | **SPA React + Vite + TS + Tailwind + shadcn** | cambi UI, aggiungi componenti/filtri, modifichi grafica |
+| `frontend/src/` | Componenti, hook `useBeers`, client API, design system | tutto il lavoro frontend |
+| `static/index.html` | Vecchio frontend vanilla (BACKUP, non più servito) | — |
 | `requirements.txt` | Dipendenze Python esatte | aggiungi librerie, aggiorni versioni |
-| `run.sh` | Avvio rapido locale con venv | cambi porta default o opzioni uvicorn |
-| `Dockerfile` | Build produzione | cambi versione Python, aggiungi dipendenze sistema |
+| `run.sh` | Avvio locale (build frontend + uvicorn) | cambi porta default o opzioni uvicorn |
+| `Dockerfile` | Build produzione (stage Node per frontend + Python) | cambi versioni, dipendenze sistema |
 | `docker-compose.yml` | Stack Docker completo | aggiungi servizi (redis, nginx…) |
 
 ---
@@ -33,7 +36,7 @@ Stack: `FastAPI` + `BeautifulSoup4` + `httpx` (async) + `aiosqlite` + HTML/CSS/J
 - **Lingua variabili/funzioni:** inglese snake_case
 - **Async ovunque:** tutte le funzioni I/O sono `async def`; non usare `requests` (usa `httpx`)
 - **Nessun ORM:** solo SQL raw con `aiosqlite`
-- **Frontend:** vanilla JS, niente framework, niente build step — tutto in `static/index.html`
+- **Frontend:** React + Vite + TypeScript + Tailwind + shadcn/ui in `frontend/` (build step: `npm run build` → `frontend/dist`, servita da FastAPI). Commenti italiano, identificatori inglese. Il vecchio `static/index.html` (vanilla) è backup, non più servito.
 - **Nessun file .env richiesto** per avvio base
 
 ---
@@ -58,6 +61,8 @@ Ogni oggetto offerta deve avere esattamente questa struttura:
     "on_sale": bool,
     "image_url": str,             # URL assoluto o stringa vuota
     "validity": str,              # es. "Fino a domenica" o ""
+    "link_url": str,              # link all'offerta (può essere "")
+    "price_per_liter": float|None,# €/L calcolato (None se non inferibile)
     "source": str,                # es. "promoqui.it"
     "zone": str,                  # zona lowercase (es. "milano")
 }
@@ -68,6 +73,8 @@ Ogni oggetto offerta deve avere esattamente questa struttura:
 - `extract_price(text)` → float|None — estrae prezzo da stringa
 - `get_supermarket_meta(name)` → dict — restituisce meta del supermercato
 - `calc_discount(original, sale)` → int — calcola % sconto
+- `calc_price_per_liter(name, price)` → float|None — €/L (formato esplicito → contenitore → lookup brand → default 0.66L)
+- `infer_liters(name)` → float|None — volume in litri inferito dal nome
 - `get_demo_data(zone)` → list — dati demo di fallback
 
 ---
@@ -79,8 +86,10 @@ GET  /api/beers?zone=...          → offerte con filtri e sort
 POST /api/refresh?zone=...        → avvia scraping background
 GET  /api/stats?zone=...          → statistiche aggregate
 GET  /api/supermarkets?zone=...   → lista supermercati trovati
+GET  /api/sources/health?zone=... → stato fonti (da scrape_log): ultimo tentativo/successo per fonte
 GET  /api/health                  → healthcheck
-GET  /                            → serve static/index.html
+GET  /                            → serve la SPA React (frontend/dist), fallback static/index.html
+GET  /{path}                      → catch-all SPA (serve asset della build o index.html)
 ```
 
 Tutti i parametri query sono documentati in `main.py` con `Query(...)`.
@@ -112,12 +121,13 @@ async def scrape_nomefonte(client: httpx.AsyncClient, zone: str) -> list:
 ```python
 results = await asyncio.gather(
     scrape_promoqui(client, zone),
-    scrape_volantino(client, zone),
-    scrape_offerte(client, zone),
+    scrape_tiendeo(client, zone),
     scrape_nomefonte(client, zone),   # ← aggiungi qui
     return_exceptions=True
 )
 ```
+
+> **Fonti attive:** `promoqui.it` + `tiendeo.it`. `volantino.it` e `offerte.it` sono state **rimosse** (domini dismessi: volantino.it ora è un print-shop SumUp, offerte.it è parcheggiato su Sedo). Le loro funzioni restano in `scraper.py` come riferimento ma non sono più chiamate.
 
 ---
 
@@ -147,59 +157,61 @@ async def nuovo_endpoint(
 
 ---
 
-## Frontend — struttura JS in `index.html`
+## Frontend — struttura React in `frontend/`
 
-Funzioni principali:
+SPA Vite + React 19 + TypeScript + Tailwind + shadcn/ui. Path alias `@/` → `src/`.
+- **Dev:** `npm run dev` (Vite :5173) fa da proxy di `/api` → FastAPI :8000.
+- **Prod:** `npm run build` → `frontend/dist`, servita da FastAPI (`/api` relativo, stessa origine).
 
-| Funzione | Ruolo |
+| File | Ruolo |
 |---|---|
-| `doSearch()` | Avvia la ricerca, chiama `fetchBeers()`, gestisce loading state |
-| `fetchBeers(zone, sortBy)` | Fetch API `/api/beers`, restituisce JSON |
-| `doRefresh()` | POST `/api/refresh`, avvia `startPolling()` |
-| `startPolling(zone)` | Polling ogni 3s finché `scraping=false` |
-| `handleResponse(data)` | Aggiorna stats, chiama `buildMarketChips()` + `applyFilters()` |
-| `applyFilters()` | Filtra e ordina `allOffers`, chiama `renderGrid()` |
-| `renderGrid(offers)` | Genera HTML delle card |
-| `beerCard(offer, idx)` | Template HTML singola card |
-| `showSkeletons()` | Mostra skeleton loader (9 card) |
-| `showToast(msg, type)` | Notifica bottom-center |
+| `src/App.tsx` | Layout + orchestrazione (header, hero, stats, filtri, griglia, footer) |
+| `src/main.tsx` | Mount React + `<Toaster>` (sonner) |
+| `src/hooks/useBeers.ts` | Stato centrale: ricerca, refresh+polling (3s), filtri/ordinamento client-side, stats derivate |
+| `src/lib/api.ts` | Client tipizzato delle API (`/api/...`) |
+| `src/lib/format.ts` | Formattazione € / €-L all'italiana + URL Google Maps |
+| `src/lib/useCountUp.ts` | Hook animazione numeri (stat tiles) |
+| `src/types.ts` | Tipi condivisi (`Offer`, `Stats`, `SourceHealth`…) |
+| `src/components/Hero.tsx` | Hero: Spotlight + boccale 3D (`BeerGlass`) + `SearchBar`, parallax mouse |
+| `src/components/BeerGlass.tsx` | Boccale "Liquid Gold" in SVG + bolle (framer-motion) |
+| `src/components/SearchBar.tsx` | Input zona + cerca + refresh |
+| `src/components/StatsPanel.tsx` | 4 tile con count-up |
+| `src/components/FilterBar.tsx` | Filtro sconto (segmented) + ordina + filtro nome |
+| `src/components/MarketChips.tsx` | Chip toggle per supermercato (colore brand) |
+| `src/components/BeerCard.tsx` | Card singola offerta (prezzo, €/L, sconto, Maps) |
+| `src/components/BeerGrid.tsx` | Griglia + skeleton + stati vuoto/scraping |
+| `src/components/SourcesHealth.tsx` | Stato fonti (footer) |
+| `src/components/ui/*` | Primitivi shadcn (`card`, `button`, `input`, `badge`, `skeleton`) + `spotlight` + `splite` |
 
-Stato globale:
-- `allOffers` — array offerte corrente (pre-filtro)
-- `currentZone` — zona attiva
-- `activeFilter` — filtro sconto attivo (`'all'`, `'sale'`, `'10'`, `'20'`, `'30'`)
-- `activeMarkets` — Set supermercati selezionati
+Stato (in `useBeers`): `offers`/`filtered`, `discount` (`'all'|'sale'|'10'|'20'|'30'`), `markets` (Set), `sortBy` (`'discount'|'ppl_asc'|'price_asc'|'price_desc'|'name'`), `query`, `scraping`.
+
+### Hero 3D
+`BeerGlass.tsx` è un boccale SVG animato (CSS + framer-motion), reso di default perché affidabile e on-brand. `ui/splite.tsx` (`SplineScene`) resta pronto: per una scena Spline a tema birra basta importarlo nell'Hero con l'URL `.splinecode`.
 
 ---
 
-## Variabili CSS (design system)
+## Design system "Liquid Gold"
 
-```css
---bg: #06060a            /* sfondo principale */
---surface: #0e0e16       /* superfici elevate */
---card: #12121c          /* card */
---card-hover: #17172a    /* card hover */
---border: #1e1e30        /* bordi */
---amber: #f59e0b         /* colore primario (birra) */
---amber-dim: #d97706     /* amber scuro */
---amber-glow: rgba(245,158,11,0.15)
---green: #10b981         /* badge offerta */
---red: #ef4444           /* errori */
---text: #f0eff5          /* testo principale */
---text-sub: #8b8aa0      /* testo secondario */
---text-dim: #4a4960      /* testo disabilitato */
---radius: 16px           /* border-radius card */
---radius-sm: 10px
---transition: 0.25s cubic-bezier(0.4,0,0.2,1)
-```
+Definito in `frontend/tailwind.config.js` + `frontend/src/index.css` (token HSL come variabili shadcn). Nero espresso + oro/ambra fuso, vetro (`.glass`), bagliore (`shadow-glow`), grana + gradienti caldi sullo sfondo.
+
+- **Font:** **Fraunces** (display, `font-display`), **Hanken Grotesk** (body, `font-sans`), **Geist Mono** (prezzi, `font-mono` / `.nums`).
+- **Accenti:** `--gold`, `--amber`, `--froth` (testo chiaro), `--deal` (verde sconto). `--radius: 1rem`.
+- **Utility custom:** `.glass`, `.text-gold-gradient`, `.rule-gold`, `.nums`, animazioni `animate-spotlight` / `animate-float` / `animate-glow-pulse` / `animate-shimmer`.
+- Token shadcn standard (`bg-card`, `text-foreground`, `border-border`, `bg-primary`…) mappati su variabili CSS in `index.css`.
 
 ---
 
 ## Comandi utili
 
 ```bash
-# Avvio sviluppo con hot reload
+# Avvio sviluppo backend con hot reload
 uvicorn main:app --reload --port 8000
+
+# Frontend dev (hot reload, proxy /api -> :8000)
+cd frontend && npm run dev          # http://localhost:5173
+
+# Build frontend (poi servito da FastAPI su :8000)
+cd frontend && npm run build        # -> frontend/dist
 
 # Test sintassi Python
 python3 -c "import ast; [ast.parse(open(f).read()) for f in ['main.py','scraper.py','database.py']]"
@@ -221,10 +233,11 @@ docker-compose logs -f
 ## Cose da NON fare
 
 - Non usare `requests` (sync) — tutto async con `httpx`
-- Non importare librerie frontend via npm/CDN non necessarie — UI è intenzionalmente zero-dependency
-- Non committare `beer_finder.db` — è runtime data
+- Non modificare `static/index.html` per cambiare la UI: il frontend vivo è `frontend/` (React). `static/` resta solo come backup.
+- Non committare `beer_finder.db` (runtime data), né `frontend/node_modules/` / `frontend/dist/` (già in `.gitignore`; `dist` viene buildato)
 - Non esporre le route API senza validazione `zone` (già gestita con `HTTPException(400)`)
 - Non rimuovere il fallback demo — serve quando le fonti sono irraggiungibili
+- Il catch-all SPA in `main.py` deve restare l'ultima route registrata (dopo tutte le `/api/...`)
 
 ---
 

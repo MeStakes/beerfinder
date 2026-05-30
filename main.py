@@ -7,10 +7,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from pathlib import Path
 import asyncio
 import time
 
-from database import init_db, get_cached_offers, save_offers, get_cache_info
+from database import init_db, get_cached_offers, save_offers, get_cache_info, get_sources_health
 from scraper import scrape_all
 
 # Tiene traccia delle zone per cui è in corso uno scraping (evita doppioni)
@@ -172,20 +173,60 @@ async def list_supermarkets(zone: str = Query(...)):
     return sorted(markets.values(), key=lambda x: -x["count"])
 
 
+@app.get("/api/sources/health")
+async def sources_health(zone: str = Query("", description="Filtra per zona (opzionale)")):
+    """Stato di salute delle fonti di scraping (da scrape_log):
+    ultimo tentativo, ultimo successo, numero offerte e ultimo errore per fonte."""
+    data = await get_sources_health(zone.strip().lower() or None)
+    return {
+        "sources": data,
+        "count": len(data),
+        "healthy_count": sum(1 for s in data if s["healthy"]),
+    }
+
+
 @app.get("/api/health")
 async def health():
     """Healthcheck — usato da Railway/Render per verificare che il server sia vivo."""
     return {"status": "ok", "timestamp": int(time.time())}
 
 
-# ─── Serve frontend ───────────────────────────────────────────
+# ─── Serve frontend (build React/Vite da frontend/dist) ───────
+BASE_DIR = Path(__file__).resolve().parent
+DIST_DIR = BASE_DIR / "frontend" / "dist"
+
+# Vecchio frontend vanilla mantenuto come backup sotto /static
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Asset buildati (JS/CSS) di Vite
+if (DIST_DIR / "assets").is_dir():
+    app.mount("/assets", StaticFiles(directory=DIST_DIR / "assets"), name="assets")
 
 
 @app.get("/")
 async def root():
-    """Serve la SPA (single-page application) contenuta in static/index.html."""
+    """Serve la SPA React buildata; senza build ricade sul vecchio static/index.html."""
+    index = DIST_DIR / "index.html"
+    if index.is_file():
+        return FileResponse(index)
     return FileResponse("static/index.html")
+
+
+@app.get("/{full_path:path}")
+async def spa_fallback(full_path: str):
+    """Cattura-tutto per la SPA: serve i file statici della build (favicon, ecc.)
+    e per ogni altra rotta restituisce index.html. Le /api sono già gestite sopra."""
+    if full_path.startswith("api"):
+        raise HTTPException(404, "Endpoint non trovato")
+    if full_path:
+        candidate = (DIST_DIR / full_path).resolve()
+        # Anti path-traversal: il file richiesto deve stare dentro DIST_DIR
+        if candidate.is_file() and candidate.is_relative_to(DIST_DIR.resolve()):
+            return FileResponse(candidate)
+    index = DIST_DIR / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    raise HTTPException(404, "Frontend non buildato")
 
 
 if __name__ == "__main__":
