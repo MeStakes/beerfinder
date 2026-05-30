@@ -4,9 +4,13 @@ import type {
   StatsResponse,
 } from '@/types'
 
-// In dev Vite fa da proxy di /api -> http://localhost:8000 (vedi vite.config.ts).
-// In produzione il frontend è servito dallo stesso FastAPI, quindi /api è relativo.
-const BASE = '/api'
+// Base URL delle API:
+// - in locale (dev) VITE_API_URL è vuoto → si usa "/api" col proxy Vite verso :8000,
+//   oppure same-origin quando FastAPI serve la build;
+// - su Vercel impostare VITE_API_URL = URL del backend Railway (es. https://xxx.up.railway.app)
+//   così le chiamate vanno al backend (che ha CORS aperto, allow_origins=["*"]).
+const API_ROOT = (import.meta.env.VITE_API_URL ?? '').replace(/\/+$/, '')
+const BASE = `${API_ROOT}/api`
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
